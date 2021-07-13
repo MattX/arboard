@@ -314,23 +314,26 @@ impl WindowsClipboardContext {
 		result
 	}
 
-	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+	pub(crate) fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+	pub(crate) fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
+	pub(crate) fn set_content_types(
+		&mut self,
+		map: HashMap<ContentType, Vec<u8>>,
+	) -> Result<(), Error> {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub fn normalize_content_type(&self, ct: ContentType) -> ContentType {
+	pub(crate) fn normalize_content_type(&self, ct: ContentType) -> ContentType {
 		todo!("not implemented for this platform")
 	}
 
-	pub fn denormalize_content_type(&self, ct: ContentType) -> String {
+	pub(crate) fn denormalize_content_type(&self, ct: ContentType) -> String {
 		todo!("not implemented for this platform")
 	}
 }
