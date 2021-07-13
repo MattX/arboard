@@ -14,9 +14,10 @@ and conditions of the chosen license apply to this file.
 #![crate_type = "rlib"]
 
 mod common;
-pub use common::Error;
 #[cfg(feature = "image-data")]
 pub use common::ImageData;
+pub use common::{ContentType, Error};
+use std::collections::HashMap;
 
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android", target_os = "emscripten")),))]
 pub(crate) mod common_linux;
@@ -101,6 +102,34 @@ impl Clipboard {
 	#[cfg(feature = "image-data")]
 	pub fn set_image(&mut self, image: ImageData) -> Result<(), Error> {
 		self.platform.set_image(image)
+	}
+
+	/// Get the list of content types supported by the current clipboard item. Content types
+	/// are returned normalized.
+	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+		self.platform.get_content_types()
+	}
+
+	/// Get data for a particular content type
+	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+		self.platform.get_content_for_type(ct)
+	}
+
+	/// Set the mapping of content types to data in the clipboard
+	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
+		self.platform.set_content_types(map)
+	}
+
+	/// Normalize a content type, ensuring it is not a [`ContentType::Custom`] instance if it
+	/// can be represented as another member of [`ContentType`].
+	pub fn normalize_content_type(&self, ct: ContentType) -> ContentType {
+		self.platform.normalize_content_type(ct)
+	}
+
+	/// Denormalize content type. The resulting string can be used to create a
+	/// [`ContentType::Custom`] instance.
+	pub fn denormalize_content_type(&self, ct: ContentType) -> String {
+		self.platform.denormalize_content_type(ct)
 	}
 }
 

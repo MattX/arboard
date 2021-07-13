@@ -8,9 +8,9 @@ the Apache 2.0 or the MIT license at the licensee's choice. The terms
 and conditions of the chosen license apply to this file.
 */
 
-use super::common::Error;
 #[cfg(feature = "image-data")]
 use super::common::ImageData;
+use super::common::{ContentType, Error};
 #[cfg(feature = "image-data")]
 use core_graphics::{
 	base::{kCGBitmapByteOrderDefault, kCGImageAlphaLast, kCGRenderingIntentDefault, CGFloat},
@@ -25,6 +25,7 @@ use objc::{msg_send, sel, sel_impl};
 use objc_foundation::{INSArray, INSObject, INSString};
 use objc_foundation::{NSArray, NSDictionary, NSObject, NSString};
 use objc_id::{Id, Owned};
+use std::collections::HashMap;
 use std::mem::transmute;
 
 // required to bring NSPasteboard into the path of the class-resolver
@@ -111,13 +112,11 @@ impl OSXClipboardContext {
 			let obj: *mut NSArray<NSString> =
 				msg_send![self.pasteboard, readObjectsForClasses:&*classes options:&*options];
 			if obj.is_null() {
-				//return Err("pasteboard#readObjectsForClasses:options: returned null".into());
 				return Err(Error::ContentNotAvailable);
 			}
 			Id::from_ptr(obj)
 		};
 		if string_array.count() == 0 {
-			//Err("pasteboard#readObjectsForClasses:options: returned empty".into())
 			Err(Error::ContentNotAvailable)
 		} else {
 			Ok(string_array[0].as_str().to_owned())
@@ -133,55 +132,7 @@ impl OSXClipboardContext {
 			Err(Error::Unknown { description: "NSPasteboard#writeObjects: returned false".into() })
 		}
 	}
-	// fn get_binary_contents(&mut self) -> Result<Option<ClipboardContent>, Box<dyn std::error::Error>> {
-	// 	let string_class: Id<NSObject> = {
-	// 		let cls: Id<Class> = unsafe { Id::from_ptr(class("NSString")) };
-	// 		unsafe { transmute(cls) }
-	// 	};
-	// 	let image_class: Id<NSObject> = {
-	// 		let cls: Id<Class> = unsafe { Id::from_ptr(class("NSImage")) };
-	// 		unsafe { transmute(cls) }
-	// 	};
-	// 	let url_class: Id<NSObject> = {
-	// 		let cls: Id<Class> = unsafe { Id::from_ptr(class("NSURL")) };
-	// 		unsafe { transmute(cls) }
-	// 	};
-	// 	let classes = vec![url_class, image_class, string_class];
-	// 	let classes: Id<NSArray<NSObject, Owned>> = NSArray::from_vec(classes);
-	// 	let options: Id<NSDictionary<NSObject, NSObject>> = NSDictionary::new();
-	// 	let contents: Id<NSArray<NSObject>> = unsafe {
-	// 		let obj: *mut NSArray<NSObject> =
-	// 			msg_send![self.pasteboard, readObjectsForClasses:&*classes options:&*options];
-	// 		if obj.is_null() {
-	// 			return Err(err("pasteboard#readObjectsForClasses:options: returned null"));
-	// 		}
-	// 		Id::from_ptr(obj)
-	// 	};
-	// 	if contents.count() == 0 {
-	// 		Ok(None)
-	// 	} else {
-	// 		let obj = &contents[0];
-	// 		if obj.is_kind_of(Class::get("NSString").unwrap()) {
-	// 			let s: &NSString = unsafe { transmute(obj) };
-	// 			Ok(Some(ClipboardContent::Utf8(s.as_str().to_owned())))
-	// 		} else if obj.is_kind_of(Class::get("NSImage").unwrap()) {
-	// 			let tiff: &NSArray<NSObject> = unsafe { msg_send![obj, TIFFRepresentation] };
-	// 			let len: usize = unsafe { msg_send![tiff, length] };
-	// 			let bytes: *const u8 = unsafe { msg_send![tiff, bytes] };
-	// 			let vec = unsafe { std::slice::from_raw_parts(bytes, len) };
-	// 			// Here we copy the entire &[u8] into a new owned `Vec`
-	// 			// Is there another way that doesn't copy multiple megabytes?
-	// 			Ok(Some(ClipboardContent::Tiff(vec.into())))
-	// 		} else if obj.is_kind_of(Class::get("NSURL").unwrap()) {
-	// 			let s: &NSString = unsafe { msg_send![obj, absoluteString] };
-	// 			Ok(Some(ClipboardContent::Utf8(s.as_str().to_owned())))
-	// 		} else {
-	// 			// let cls: &Class = unsafe { msg_send![obj, class] };
-	// 			// println!("{}", cls.name());
-	// 			Err(err("pasteboard#readObjectsForClasses:options: returned unknown class"))
-	// 		}
-	// 	}
-	// }
+
 	#[cfg(feature = "image-data")]
 	pub(crate) fn get_image(&mut self) -> Result<ImageData, Error> {
 		use std::io::Cursor;
@@ -257,6 +208,26 @@ impl OSXClipboardContext {
 			});
 		}
 		Ok(())
+	}
+
+	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn normalize_content_type(&self, ct: ContentType) -> ContentType {
+		todo!("not implemented for this platform")
+	}
+
+	pub fn denormalize_content_type(&self, ct: ContentType) -> String {
+		todo!("not implemented for this platform")
 	}
 }
 

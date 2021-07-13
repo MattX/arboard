@@ -137,3 +137,19 @@ impl<'a> ImageData<'a> {
 		}
 	}
 }
+
+/// Represents the type or format of content in the clipboard. On most systems, a single clipboard
+/// item may contain alternate representations in different formats.
+///
+/// This enum defines portable values for common formats, as well as a [`ContentType::Custom`]
+/// alternative to represent system-specific types.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ContentType {
+	Text,
+	Html,
+	Pdf,
+	Png,
+	Rtf,
+	Url,
+	Custom(String),
+}

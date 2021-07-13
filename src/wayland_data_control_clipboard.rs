@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::io::Read;
 
@@ -7,12 +8,12 @@ use wl_clipboard_rs::{
 	utils::is_primary_selection_supported,
 };
 
-use crate::{
-	common::Error,
-	common_linux::{into_unknown, LinuxClipboardKind},
-};
 #[cfg(feature = "image-data")]
 use crate::{common::ImageData, common_linux::encode_as_png};
+use crate::{
+	common::{ContentType, Error},
+	common_linux::{into_unknown, LinuxClipboardKind},
+};
 
 #[cfg(feature = "image-data")]
 const MIME_PNG: &str = "image/png";
@@ -154,5 +155,25 @@ impl WaylandDataControlClipboardContext {
 		let source = Source::Bytes(image.into());
 		opts.copy(source, MimeType::Specific(MIME_PNG.into())).map_err(into_unknown)?;
 		Ok(())
+	}
+
+	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn normalize_content_type(ct: ContentType) -> ContentType {
+		todo!("not implemented for this platform")
+	}
+
+	pub fn denormalize_content_type(ct: ContentType) -> String {
+		todo!("not implemented for this platform")
 	}
 }

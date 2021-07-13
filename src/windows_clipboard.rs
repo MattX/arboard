@@ -8,13 +8,14 @@ the Apache 2.0 or the MIT license at the licensee's choice. The terms
 and conditions of the chosen license apply to this file.
 */
 
+use std::collections::HashMap;
 #[cfg(feature = "image-data")]
 use std::io::{self, Read, Seek};
 
 use clipboard_win::Clipboard as SystemClipboard;
 #[cfg(feature = "image-data")]
 use image::{
-	bmp::{BmpDecoder, BmpEncoder},
+	codecs::bmp::{BmpDecoder, BmpEncoder},
 	ColorType, ImageDecoder,
 };
 use scopeguard::defer;
@@ -37,9 +38,9 @@ use winapi::{
 	},
 };
 
-use super::common::Error;
 #[cfg(feature = "image-data")]
 use super::common::ImageData;
+use super::common::{ContentType, Error};
 
 const MAX_OPEN_ATTEMPTS: usize = 5;
 
@@ -311,5 +312,25 @@ impl WindowsClipboardContext {
 		.map_err(|_| Error::ClipboardOccupied)?;
 
 		result
+	}
+
+	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn normalize_content_type(&self, ct: ContentType) -> ContentType {
+		todo!("not implemented for this platform")
+	}
+
+	pub fn denormalize_content_type(&self, ct: ContentType) -> String {
+		todo!("not implemented for this platform")
 	}
 }

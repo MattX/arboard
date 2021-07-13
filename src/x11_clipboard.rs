@@ -43,6 +43,7 @@ use x11rb::{
 	COPY_DEPTH_FROM_PARENT, COPY_FROM_PARENT, NONE,
 };
 
+use crate::common::ContentType;
 #[cfg(feature = "image-data")]
 use crate::{common_linux::encode_as_png, ImageData};
 use crate::{common_linux::into_unknown, Error, LinuxClipboardKind};
@@ -870,6 +871,26 @@ impl X11ClipboardContext {
 		let encoded = encode_as_png(&image)?;
 		let data = ClipboardData { bytes: encoded, format: self.inner.atoms.PNG_MIME };
 		self.inner.write(data, LinuxClipboardKind::Clipboard)
+	}
+
+	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
+		Err(Error::Unknown { description: "unsupported for this platform".into() })
+	}
+
+	pub fn normalize_content_type(ct: ContentType) -> ContentType {
+		todo!("not implemented for this platform")
+	}
+
+	pub fn denormalize_content_type(ct: ContentType) -> String {
+		todo!("not implemented for this platform")
 	}
 }
 

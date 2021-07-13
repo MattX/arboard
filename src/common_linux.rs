@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 #[cfg(feature = "image-data")]
 use std::{cell::RefCell, rc::Rc};
 
@@ -8,7 +9,7 @@ use log::{info, warn};
 
 #[cfg(feature = "image-data")]
 use crate::ImageData;
-use crate::{x11_clipboard::X11ClipboardContext, Error};
+use crate::{x11_clipboard::X11ClipboardContext, ContentType, Error};
 
 pub fn into_unknown<E: std::fmt::Display>(error: E) -> Error {
 	Error::Unknown { description: format!("{}", error) }
@@ -167,6 +168,7 @@ impl LinuxClipboard {
 		Ok(Self::X11(X11ClipboardContext::new()?))
 	}
 
+	// TODO make a macro to avoid repetition?
 	/// Fetches utf-8 text from the clipboard and returns it.
 	pub fn get_text(&mut self) -> Result<String, Error> {
 		match self {
@@ -216,6 +218,51 @@ impl LinuxClipboard {
 
 			#[cfg(feature = "wayland-data-control")]
 			Self::WlDataControl(cb) => cb.set_image(image),
+		}
+	}
+
+	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+		match self {
+			Self::X11(cb) => cb.get_content_types(),
+
+			#[cfg(feature = "wayland-data-control")]
+			Self::WlDataControl(cb) => cb.get_content_types(),
+		}
+	}
+
+	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+		match self {
+			Self::X11(cb) => cb.get_content_for_type(ct),
+
+			#[cfg(feature = "wayland-data-control")]
+			Self::WlDataControl(cb) => cb.get_content_for_type(ct),
+		}
+	}
+
+	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
+		match self {
+			Self::X11(cb) => cb.set_content_types(map),
+
+			#[cfg(feature = "wayland-data-control")]
+			Self::WlDataControl(cb) => cb.set_content_types(map),
+		}
+	}
+
+	pub fn normalize_content_type(&self, ct: ContentType) -> ContentType {
+		match self {
+			Self::X11(_cb) => X11ClipboardContext::normalize_content_type(ct),
+
+			#[cfg(feature = "wayland-data-control")]
+			Self::WlDataControl(_cb) => WaylandDataControlClipboardContext::normalize_content_type(ct),
+		}
+	}
+
+	pub fn denormalize_content_type(&self, ct: ContentType) -> String {
+		match self {
+			Self::X11(_cb) => X11ClipboardContext::denormalize_content_type(ct),
+
+			#[cfg(feature = "wayland-data-control")]
+			Self::WlDataControl(_cb) => WaylandDataControlClipboardContext::denormalize_content_type(ct),
 		}
 	}
 }
