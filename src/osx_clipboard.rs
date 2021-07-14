@@ -225,7 +225,7 @@ impl OSXClipboardContext {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub(crate) fn normalize_content_type(&self, ct: ContentType) -> ContentType {
+	pub(crate) fn normalize_content_type(&self, s: String) -> ContentType {
 		todo!("not implemented for this platform")
 	}
 

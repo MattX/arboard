@@ -180,7 +180,7 @@ impl WaylandDataControlClipboardContext {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub fn normalize_content_type(ct: ContentType) -> ContentType {
+	pub fn normalize_content_type(s: String) -> ContentType {
 		todo!("not implemented for this platform")
 	}
 

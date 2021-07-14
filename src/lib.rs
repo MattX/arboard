@@ -122,8 +122,8 @@ impl Clipboard {
 
 	/// Normalize a content type, ensuring it is not a [`ContentType::Custom`] instance if it
 	/// can be represented as another member of [`ContentType`].
-	pub fn normalize_content_type(&self, ct: ContentType) -> ContentType {
-		self.platform.normalize_content_type(ct)
+	pub fn normalize_content_type(&self, s: String) -> ContentType {
+		self.platform.normalize_content_type(s)
 	}
 
 	/// Denormalize content type. The resulting string can be used to create a

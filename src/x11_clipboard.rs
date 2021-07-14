@@ -47,6 +47,8 @@ use crate::common::ContentType;
 #[cfg(feature = "image-data")]
 use crate::{common_linux::encode_as_png, ImageData};
 use crate::{common_linux::into_unknown, Error, LinuxClipboardKind};
+use std::convert::TryFrom;
+use std::str::FromStr;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -928,9 +930,9 @@ impl X11ClipboardContext {
 		&mut self,
 		selection: LinuxClipboardKind,
 	) -> Result<Vec<ContentType>, Error> {
-		self.inner
-			.get_content_types(selection)
-			.map(|result| result.into_iter().map(ContentType::Custom).collect())
+		self.inner.get_content_types(selection).map(|result| {
+			result.into_iter().map(X11ClipboardContext::normalize_content_type).collect()
+		})
 	}
 
 	pub(crate) fn get_content_for_type(
@@ -949,12 +951,38 @@ impl X11ClipboardContext {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub(crate) fn normalize_content_type(ct: ContentType) -> ContentType {
-		todo!("not implemented for this platform")
+	pub(crate) fn normalize_content_type(s: String) -> ContentType {
+		if s == "ADOBE_PORTABLE_DOCUMENT_FORMAT" {
+			return ContentType::Pdf;
+		} else if s == "UTF8_STRING" {
+			return ContentType::Text;
+		}
+		if let Ok(mime_type) = mime::Mime::from_str(&s) {
+			if mime_type == mime::TEXT_PLAIN_UTF_8 {
+				return ContentType::Text;
+			} else if mime_type == mime::TEXT_HTML_UTF_8 {
+				return ContentType::Html;
+			} else if mime_type == mime::APPLICATION_PDF {
+				return ContentType::Pdf;
+			} else if mime_type == mime::IMAGE_PNG {
+				return ContentType::Png;
+			} else if mime_type == "application/rtf" {
+				return ContentType::Rtf;
+			}
+		}
+		ContentType::Custom(s)
 	}
 
 	pub(crate) fn denormalize_content_type(ct: ContentType) -> String {
-		todo!("not implemented for this platform")
+		match ct {
+			ContentType::Text => mime::TEXT_PLAIN_UTF_8.to_string(),
+			ContentType::Html => mime::TEXT_HTML_UTF_8.to_string(),
+			ContentType::Pdf => mime::APPLICATION_PDF.to_string(),
+			ContentType::Png => mime::IMAGE_PNG.to_string(),
+			ContentType::Rtf => "application/rtf".to_string(),
+			ContentType::Url => mime::TEXT_PLAIN_UTF_8.to_string(),
+			ContentType::Custom(s) => s,
+		}
 	}
 }
 

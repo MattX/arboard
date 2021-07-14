@@ -249,12 +249,12 @@ impl LinuxClipboard {
 		}
 	}
 
-	pub fn normalize_content_type(&self, ct: ContentType) -> ContentType {
+	pub fn normalize_content_type(&self, s: String) -> ContentType {
 		match self {
-			Self::X11(_cb) => X11ClipboardContext::normalize_content_type(ct),
+			Self::X11(_cb) => X11ClipboardContext::normalize_content_type(s),
 
 			#[cfg(feature = "wayland-data-control")]
-			Self::WlDataControl(_cb) => WaylandDataControlClipboardContext::normalize_content_type(ct),
+			Self::WlDataControl(_cb) => WaylandDataControlClipboardContext::normalize_content_type(s),
 		}
 	}
 
