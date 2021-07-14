@@ -12,8 +12,6 @@ and conditions of the chosen license apply to this file.
 #![crate_type = "lib"]
 #![crate_type = "dylib"]
 #![crate_type = "rlib"]
-// TODO remove me
-#![allow(dead_code)]
 
 mod common;
 #[cfg(feature = "image-data")]
@@ -35,10 +33,10 @@ mod x11_clipboard;
 mod wayland_data_control_clipboard;
 
 #[cfg(windows)]
-pub mod windows_clipboard;
+mod windows_clipboard;
 
 #[cfg(target_os = "macos")]
-pub mod osx_clipboard;
+mod osx_clipboard;
 
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android", target_os = "emscripten")),))]
 type PlatformClipboard = common_linux::LinuxClipboard;

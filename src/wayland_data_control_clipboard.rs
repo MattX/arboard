@@ -161,7 +161,7 @@ impl WaylandDataControlClipboardContext {
 		&mut self,
 		selection: LinuxClipboardKind,
 	) -> Result<Vec<String>, Error> {
-		Err(Error::Unknown { description: "unsupported for this platform".into() })
+		Err(Error::ClipboardNotSupported)
 	}
 
 	pub(crate) fn get_content_for_type(
@@ -169,7 +169,7 @@ impl WaylandDataControlClipboardContext {
 		ct: &ContentType,
 		selection: LinuxClipboardKind,
 	) -> Result<Vec<u8>, Error> {
-		Err(Error::Unknown { description: "unsupported for this platform".into() })
+		Err(Error::ClipboardNotSupported)
 	}
 
 	pub(crate) fn set_content_types(
@@ -177,14 +177,14 @@ impl WaylandDataControlClipboardContext {
 		map: HashMap<ContentType, Vec<u8>>,
 		selection: LinuxClipboardKind,
 	) -> Result<(), Error> {
-		Err(Error::Unknown { description: "unsupported for this platform".into() })
+		Err(Error::ClipboardNotSupported)
 	}
 
 	pub fn normalize_content_type(s: String) -> ContentType {
-		todo!("not implemented for this platform")
+		ContentType::Custom(s)
 	}
 
 	pub fn denormalize_content_type(ct: ContentType) -> String {
-		todo!("not implemented for this platform")
+		format!("{:?}", ct)
 	}
 }

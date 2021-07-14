@@ -47,8 +47,8 @@ use crate::common::ContentType;
 #[cfg(feature = "image-data")]
 use crate::{common_linux::encode_as_png, ImageData};
 use crate::{common_linux::into_unknown, Error, LinuxClipboardKind};
-use std::str::FromStr;
 use std::iter::FromIterator;
+use std::str::FromStr;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -963,7 +963,8 @@ impl X11ClipboardContext {
 		map: HashMap<ContentType, Vec<u8>>,
 		selection: LinuxClipboardKind,
 	) -> Result<(), Error> {
-		let atom_map = map.into_iter()
+		let atom_map = map
+			.into_iter()
 			.map(|(key, value)| {
 				let denorm = X11ClipboardContext::denormalize_content_type(key);
 				let new_key = self.inner.intern_atom(&denorm)?;

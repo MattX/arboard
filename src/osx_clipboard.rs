@@ -18,19 +18,21 @@ use core_graphics::{
 	data_provider::{CGDataProvider, CustomData},
 	image::CGImage,
 };
+use lazy_static::lazy_static;
 use objc::runtime::{Class, Object};
 #[cfg(feature = "image-data")]
 use objc::runtime::{BOOL, NO};
-use objc::{msg_send, sel, sel_impl};
+use objc::{class, msg_send, sel, sel_impl};
 use objc_foundation::{INSArray, INSData, INSFastEnumeration, INSObject, INSString, NSData};
 use objc_foundation::{NSArray, NSDictionary, NSObject, NSString};
 use objc_id::{Id, Owned};
 use std::collections::HashMap;
 use std::mem::transmute;
-use std::sync::MutexGuard;
+use std::sync::{Mutex, MutexGuard};
 
 // creating or accessing the OSX pasteboard is not thread-safe, and needs to be protected
 // see https://github.com/alacritty/copypasta/issues/11.
+struct ClipboardMutexToken;
 lazy_static! {
 	static ref CLIPBOARD_CONTEXT_MUTEX: Mutex<ClipboardMutexToken> =
 		Mutex::new(ClipboardMutexToken {});
@@ -99,9 +101,7 @@ pub struct OSXClipboardContext {
 impl OSXClipboardContext {
 	pub(crate) fn new() -> Result<OSXClipboardContext, Error> {
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
-		if !lock.is_ok() {
-			panic!("could not acquire mutex");
-		}
+		assert!(lock.is_ok(), "could not acquire mutex");
 
 		let cls = Class::get("NSPasteboard")
 			.ok_or(Error::Unknown { description: "Class::get(\"NSPasteboard\")".into() })?;
@@ -116,9 +116,7 @@ impl OSXClipboardContext {
 	}
 	pub(crate) fn get_text(&mut self) -> Result<String, Error> {
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
-		if !lock.is_ok() {
-			panic!("could not acquire mutex");
-		}
+		assert!(lock.is_ok(), "could not acquire mutex");
 
 		let string_class: Id<NSObject> = {
 			let cls: Id<Class> = unsafe { Id::from_ptr(class("NSString")) };
@@ -142,9 +140,7 @@ impl OSXClipboardContext {
 	}
 	pub(crate) fn set_text(&mut self, data: String) -> Result<(), Error> {
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
-		if !lock.is_ok() {
-			panic!("could not acquire mutex");
-		}
+		assert!(lock.is_ok(), "could not acquire mutex");
 
 		let string_array = NSArray::from_vec(vec![NSString::from_str(&data)]);
 		let _: usize = unsafe { msg_send![self.pasteboard, clearContents] };
@@ -161,7 +157,7 @@ impl OSXClipboardContext {
 		use std::io::Cursor;
 
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
-		if !lock.is_ok() {
+		if lock.is_err() {
 			panic!("could not acquire mutex");
 		}
 
@@ -223,9 +219,7 @@ impl OSXClipboardContext {
 	#[cfg(feature = "image-data")]
 	pub(crate) fn set_image(&mut self, data: ImageData) -> Result<(), Error> {
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
-		if !lock.is_ok() {
-			panic!("could not acquire mutex");
-		}
+		assert!(lock.is_ok(), "could not acquire mutex");
 
 		let pixels = data.bytes.into();
 		let image = image_from_pixels(pixels, data.width, data.height)
@@ -245,9 +239,7 @@ impl OSXClipboardContext {
 
 	pub(crate) fn get_content_types(&mut self) -> Result<Vec<String>, Error> {
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
-		if !lock.is_ok() {
-			panic!("could not acquire mutex");
-		}
+		assert!(lock.is_ok(), "could not acquire mutex");
 
 		let first_item = self.first_item(&mut lock.unwrap());
 		if first_item.is_none() {
@@ -257,24 +249,22 @@ impl OSXClipboardContext {
 			let types: *mut NSArray<NSString> = msg_send![first_item.unwrap(), types];
 			Id::from_ptr(types)
 		};
-		Ok(types.enumerator().into_iter().map(|t| t.into()).collect())
+		Ok(types.enumerator().into_iter().map(|t| t.as_str().into()).collect())
 	}
 
 	pub(crate) fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
-		if !lock.is_ok() {
-			panic!("could not acquire mutex");
-		}
+		assert!(lock.is_ok(), "could not acquire mutex");
 
 		let first_item = self.first_item(&mut lock.unwrap());
 		if first_item.is_none() {
-			return Err("clipboard is empty".into());
+			return Err(Error::ContentNotAvailable);
 		}
-		let typ: Id<NSString> = ct.into();
+		let typ: Id<NSString> = NSString::from_str(&self.denormalize_content_type(ct.clone()));
 		let data: Id<NSData> = unsafe {
 			let data: *mut NSData = msg_send![self.pasteboard, dataForType: typ];
 			if data.is_null() {
-				return Err(format!("clipboard does not have data for {:?}", &ct).into());
+				return Err(Error::ContentNotAvailable);
 			}
 			Id::from_ptr(data)
 		};
@@ -286,17 +276,16 @@ impl OSXClipboardContext {
 		map: HashMap<ContentType, Vec<u8>>,
 	) -> Result<(), Error> {
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
-		if !lock.is_ok() {
-			panic!("could not acquire mutex");
-		}
-		let cls = Class::get("NSPasteboardItem").ok_or("Class::get(\"NSPasteboardItem\")")?;
+		assert!(lock.is_ok(), "could not acquire mutex");
+
+		let cls = class!(NSPasteboardItem);
 		let pasteboard_item: Id<NSObject> = unsafe {
 			let item: *mut NSObject = msg_send![cls, new];
 			Id::from_ptr(item)
 		};
 		for (ct, data) in map.into_iter() {
 			let data = NSData::from_vec(data);
-			let typ: Id<NSString> = (&ct).into();
+			let typ: Id<NSString> = NSString::from_str(&self.denormalize_content_type(ct));
 			unsafe { msg_send![pasteboard_item, setData:data forType:typ] }
 		}
 		let items = NSArray::from_vec(vec![pasteboard_item]);
@@ -305,7 +294,7 @@ impl OSXClipboardContext {
 			msg_send![self.pasteboard, writeObjects: items]
 		};
 		if result == NO {
-			Err("writeObject failed".into())
+			Err(Error::ClipboardOccupied)
 		} else {
 			Ok(())
 		}
