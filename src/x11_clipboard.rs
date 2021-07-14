@@ -48,6 +48,7 @@ use crate::common::ContentType;
 use crate::{common_linux::encode_as_png, ImageData};
 use crate::{common_linux::into_unknown, Error, LinuxClipboardKind};
 use std::str::FromStr;
+use std::iter::FromIterator;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -117,9 +118,9 @@ struct ClipboardContext {
 	/// requests coming to us.
 	server: XContext,
 	atoms: Atoms,
-	clipboard_data: RwLock<Option<ClipboardItem>>,
-	primary_data: RwLock<Option<ClipboardItem>>,
-	secondary_data: RwLock<Option<ClipboardItem>>,
+	clipboard_data: RwLock<Option<ClipboardData>>,
+	primary_data: RwLock<Option<ClipboardData>>,
+	secondary_data: RwLock<Option<ClipboardData>>,
 
 	handover_state: Mutex<ManagerHandoverState>,
 	handover_cv: Condvar,
@@ -176,6 +177,8 @@ struct ClipboardItem {
 	format: Atom,
 }
 
+type ClipboardData = HashMap<Atom, Vec<u8>>;
+
 #[derive(Debug)]
 enum ReadSelNotifyResult {
 	GotData(Vec<u8>),
@@ -200,7 +203,7 @@ impl ClipboardContext {
 		})
 	}
 
-	fn write(&self, data: ClipboardItem, selection: LinuxClipboardKind) -> Result<()> {
+	fn write(&self, data: ClipboardData, selection: LinuxClipboardKind) -> Result<()> {
 		if self.serve_stopped.load(Ordering::Relaxed) {
 			return Err(Error::Unknown {
                 description: "The clipboard handler thread seems to have stopped. Logging messages may reveal the cause. (See the `log` crate.)".into()
@@ -233,8 +236,8 @@ impl ClipboardContext {
 			let data = self.data_of(selection).read();
 			if let Some(data) = &*data {
 				for format in formats {
-					if *format == data.format {
-						return Ok(data.clone());
+					if let Some(value) = data.get(format) {
+						return Ok(ClipboardItem { bytes: value.clone(), format: *format });
 					}
 				}
 			}
@@ -361,7 +364,7 @@ impl ClipboardContext {
 		}
 	}
 
-	fn data_of(&self, selection: LinuxClipboardKind) -> &RwLock<Option<ClipboardItem>> {
+	fn data_of(&self, selection: LinuxClipboardKind) -> &RwLock<Option<ClipboardData>> {
 		match selection {
 			LinuxClipboardKind::Clipboard => &self.clipboard_data,
 			LinuxClipboardKind::Primary => &self.primary_data,
@@ -567,13 +570,15 @@ impl ClipboardContext {
 			targets.push(self.atoms.SAVE_TARGETS);
 			let data = self.data_of(selection).read();
 			if let Some(data) = &*data {
-				targets.push(data.format);
-				if data.format == self.atoms.UTF8_STRING {
-					// When we are storing a UTF8 string,
-					// add all equivalent formats to the supported targets
-					targets.push(self.atoms.UTF8_MIME_0);
-					targets.push(self.atoms.UTF8_MIME_1);
-				}
+				targets.extend(data.keys());
+				// TODO: I removed the following, because if someone *actually* asks us for
+				//       say, UTF8_MIME_0, we don't actually respond below.
+				// if data.contains_key(&self.atoms.UTF8_STRING) {
+				// 	// When we are storing a UTF8 string,
+				// 	// add all equivalent formats to the supported targets
+				// 	targets.push(self.atoms.UTF8_MIME_0);
+				// 	targets.push(self.atoms.UTF8_MIME_1);
+				// }
 			}
 			self.server
 				.conn
@@ -592,7 +597,7 @@ impl ClipboardContext {
 			trace!("Handling request for (probably) the clipboard contents.");
 			let data = self.data_of(selection).read();
 			if let Some(data) = &*data {
-				if data.format == event.target {
+				if let Some(val) = data.get(&event.target) {
 					self.server
 						.conn
 						.change_property8(
@@ -600,13 +605,13 @@ impl ClipboardContext {
 							event.requestor,
 							event.property,
 							event.target,
-							&data.bytes,
+							&val,
 						)
 						.map_err(into_unknown)?;
 					self.server.conn.flush().map_err(into_unknown)?;
 					success = true;
 				} else {
-					success = false
+					success = false;
 				}
 			} else {
 				// This must mean that we lost ownership of the data
@@ -907,8 +912,7 @@ impl X11ClipboardContext {
 		message: String,
 		selection: LinuxClipboardKind,
 	) -> Result<()> {
-		let data =
-			ClipboardItem { bytes: message.into_bytes(), format: self.inner.atoms.UTF8_STRING };
+		let data = HashMap::from_iter([(self.inner.atoms.UTF8_STRING, message.into_bytes())]);
 		self.inner.write(data, selection)
 	}
 
@@ -933,7 +937,7 @@ impl X11ClipboardContext {
 	#[cfg(feature = "image-data")]
 	pub fn set_image(&self, image: ImageData) -> Result<()> {
 		let encoded = encode_as_png(&image)?;
-		let data = ClipboardItem { bytes: encoded, format: self.inner.atoms.PNG_MIME };
+		let data = HashMap::from_iter([(self.inner.atoms.PNG_MIME, encoded)]);
 		self.inner.write(data, LinuxClipboardKind::Clipboard)
 	}
 
@@ -959,7 +963,14 @@ impl X11ClipboardContext {
 		map: HashMap<ContentType, Vec<u8>>,
 		selection: LinuxClipboardKind,
 	) -> Result<(), Error> {
-		Err(Error::Unknown { description: "unsupported for this platform".into() })
+		let atom_map = map.into_iter()
+			.map(|(key, value)| {
+				let denorm = X11ClipboardContext::denormalize_content_type(key);
+				let new_key = self.inner.intern_atom(&denorm)?;
+				Ok((new_key, value))
+			})
+			.collect::<Result<HashMap<_, _>, _>>()?;
+		self.inner.write(atom_map, selection)
 	}
 
 	pub fn normalize_content_type(s: String) -> ContentType {
