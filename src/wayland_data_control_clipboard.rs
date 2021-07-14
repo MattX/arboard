@@ -157,15 +157,26 @@ impl WaylandDataControlClipboardContext {
 		Ok(())
 	}
 
-	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+	pub(crate) fn get_content_types(
+		&mut self,
+		selection: LinuxClipboardKind,
+	) -> Result<Vec<ContentType>, Error> {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+	pub(crate) fn get_content_for_type(
+		&mut self,
+		ct: &ContentType,
+		selection: LinuxClipboardKind,
+	) -> Result<Vec<u8>, Error> {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
+	pub(crate) fn set_content_types(
+		&mut self,
+		map: HashMap<ContentType, Vec<u8>>,
+		selection: LinuxClipboardKind,
+	) -> Result<(), Error> {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 

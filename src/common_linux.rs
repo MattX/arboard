@@ -221,30 +221,31 @@ impl LinuxClipboard {
 		}
 	}
 
+	// TODO make these available for PRIMARY and SECONDARY
 	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
 		match self {
-			Self::X11(cb) => cb.get_content_types(),
+			Self::X11(cb) => cb.get_content_types(LinuxClipboardKind::Clipboard),
 
 			#[cfg(feature = "wayland-data-control")]
-			Self::WlDataControl(cb) => cb.get_content_types(),
+			Self::WlDataControl(cb) => cb.get_content_types(LinuxClipboardKind::Clipboard),
 		}
 	}
 
 	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
 		match self {
-			Self::X11(cb) => cb.get_content_for_type(ct),
+			Self::X11(cb) => cb.get_content_for_type(ct, LinuxClipboardKind::Clipboard),
 
 			#[cfg(feature = "wayland-data-control")]
-			Self::WlDataControl(cb) => cb.get_content_for_type(ct),
+			Self::WlDataControl(cb) => cb.get_content_for_type(ct, LinuxClipboardKind::Clipboard),
 		}
 	}
 
 	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
 		match self {
-			Self::X11(cb) => cb.set_content_types(map),
+			Self::X11(cb) => cb.set_content_types(map, LinuxClipboardKind::Clipboard),
 
 			#[cfg(feature = "wayland-data-control")]
-			Self::WlDataControl(cb) => cb.set_content_types(map),
+			Self::WlDataControl(cb) => cb.set_content_types(map, LinuxClipboardKind::Clipboard),
 		}
 	}
 

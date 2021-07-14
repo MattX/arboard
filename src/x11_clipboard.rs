@@ -171,14 +171,14 @@ impl XContext {
 struct ClipboardData {
 	bytes: Vec<u8>,
 
-	/// The atom represeting the format in which the data is encoded.
+	/// The atom representing the format in which the data is encoded.
 	format: Atom,
 }
 
+#[derive(Debug)]
 enum ReadSelNotifyResult {
 	GotData(Vec<u8>),
 	IncrStarted,
-	EventNotRecognized,
 }
 
 impl ClipboardContext {
@@ -239,9 +239,6 @@ impl ClipboardContext {
 			}
 			return Err(Error::ContentNotAvailable);
 		}
-		// if let Some(data) = self.data.read().clone() {
-		//     return Ok(data)
-		// }
 		let reader = XContext::new()?;
 
 		trace!("Trying to get the clipboard data.");
@@ -286,7 +283,11 @@ impl ClipboardContext {
 		reader.conn.sync().map_err(into_unknown)?;
 
 		trace!("Finished `convert_selection`");
+		// TODO is target_format always target + format?
+		self.read_response(reader, target_format, target_format)
+	}
 
+	fn read_response(&self, reader: &XContext, target: Atom, format: Atom) -> Result<Vec<u8>> {
 		let mut incr_data: Vec<u8> = Vec::new();
 		let mut using_incr = false;
 
@@ -297,6 +298,7 @@ impl ClipboardContext {
 			let event = match event {
 				Some(e) => e,
 				None => {
+					// TODO this is gross?
 					std::thread::sleep(Duration::from_millis(1));
 					continue;
 				}
@@ -307,8 +309,9 @@ impl ClipboardContext {
 					trace!("Read SelectionNotify");
 					let result = self.handle_read_selection_notify(
 						&reader,
-						target_format,
-						&mut using_incr,
+						target,
+						format,
+						using_incr,
 						&mut incr_data,
 						event,
 					)?;
@@ -318,9 +321,9 @@ impl ClipboardContext {
 							// This means we received an indication that an the
 							// data is going to be sent INCRementally. Let's
 							// reset our timeout.
+							using_incr = true;
 							timeout_end += SHORT_TIMEOUT_DUR;
 						}
-						ReadSelNotifyResult::EventNotRecognized => (),
 					}
 				}
 				// If the previous SelectionNotify event specified that the data
@@ -329,8 +332,8 @@ impl ClipboardContext {
 				Event::PropertyNotify(event) => {
 					let result = self.handle_read_property_notify(
 						&reader,
-						target_format,
-						&mut using_incr,
+						format,
+						using_incr,
 						&mut incr_data,
 						&mut timeout_end,
 						event,
@@ -339,7 +342,10 @@ impl ClipboardContext {
 						return Ok(incr_data);
 					}
 				}
-				_ => log::trace!("An unexpected event arrived while reading the clipboard."),
+				_ => log::trace!(
+					"An unexpected event arrived while reading the clipboard: {:?}",
+					event
+				),
 			}
 		}
 		log::info!("Time-out hit while reading the clipboard.");
@@ -416,8 +422,9 @@ impl ClipboardContext {
 	fn handle_read_selection_notify(
 		&self,
 		reader: &XContext,
-		target_format: u32,
-		using_incr: &mut bool,
+		target: Atom,
+		format: Atom,
+		using_incr: bool,
 		incr_data: &mut Vec<u8>,
 		event: SelectionNotifyEvent,
 	) -> Result<ReadSelNotifyResult> {
@@ -426,29 +433,34 @@ impl ClipboardContext {
 
 		// According to: https://tronche.com/gui/x/icccm/sec-2.html#s-2.4
 		// the target must be set to the same as what we requested.
-		if event.property == NONE || event.target != target_format {
+		if event.property == NONE || event.target != target {
+			warn!(
+				"rejecting event {:?} with target {}",
+				event,
+				self.atom_name(event.target).unwrap()
+			);
 			return Err(Error::ContentNotAvailable);
 		}
 		if self.kind_of(event.selection).is_none() {
-			log::info!("Received a SelectionNotify for a selection other than CLIPBOARD, PRIMARY or SECONDARY. This is unexpected.");
-			return Ok(ReadSelNotifyResult::EventNotRecognized);
+			return Err(Error::Unknown { description: "received a SelectionNotify for a selection other than CLIPBOARD, PRIMARY or SECONDARY. This is unexpected.".into() });
 		}
-		if *using_incr {
-			log::warn!("Received a SelectionNotify while already expecting INCR segments.");
-			return Ok(ReadSelNotifyResult::EventNotRecognized);
+		if using_incr {
+			return Err(Error::Unknown {
+				description: "received a SelectionNotify while already expecting INCR segments."
+					.into(),
+			});
 		}
+
 		// request the selection
 		let mut reply = reader
 			.conn
-			.get_property(true, event.requestor, event.property, event.target, 0, u32::MAX / 4)
+			.get_property(true, event.requestor, event.property, format, 0, u32::MAX / 4)
 			.map_err(into_unknown)?
 			.reply()
 			.map_err(into_unknown)?;
 
-		// trace!("Property.type: {:?}", self.atom_name(reply.type_));
-
 		// we found something
-		if reply.type_ == target_format {
+		if reply.type_ == format {
 			Ok(ReadSelNotifyResult::GotData(reply.value))
 		} else if reply.type_ == self.atoms.INCR {
 			// Note that we call the get_property again because we are
@@ -468,8 +480,7 @@ impl ClipboardContext {
 				.map_err(into_unknown)?
 				.reply()
 				.map_err(into_unknown)?;
-			log::trace!("Receiving INCR segments");
-			*using_incr = true;
+			trace!("Receiving INCR segments");
 			if reply.value_len == 4 {
 				let min_data_len = reply.value32().and_then(|mut vals| vals.next()).unwrap_or(0);
 				incr_data.reserve(min_data_len as usize);
@@ -478,7 +489,10 @@ impl ClipboardContext {
 		} else {
 			// this should never happen, we have sent a request only for supported types
 			Err(Error::Unknown {
-				description: String::from("incorrect type received from clipboard"),
+				description: format!(
+					"incorrect type received from clipboard: {}",
+					self.atom_name(reply.type_).unwrap()
+				),
 			})
 		}
 	}
@@ -487,8 +501,8 @@ impl ClipboardContext {
 	fn handle_read_property_notify(
 		&self,
 		reader: &XContext,
-		target_format: u32,
-		using_incr: &mut bool,
+		format: Atom,
+		using_incr: bool,
 		incr_data: &mut Vec<u8>,
 		timeout_end: &mut Instant,
 		event: PropertyNotifyEvent,
@@ -496,14 +510,15 @@ impl ClipboardContext {
 		if event.atom != self.atoms.ARBOARD_CLIPBOARD || event.state != Property::NEW_VALUE {
 			return Ok(false);
 		}
-		if !*using_incr {
-			// This must mean the selection owner received our request, and is
-			// now preparing the data
+
+		if !using_incr {
+			warn!("received a PropertyNotify while not in INCR mode: {:?}", event);
 			return Ok(false);
 		}
+
 		let reply = reader
 			.conn
-			.get_property(true, event.window, event.atom, target_format, 0, u32::MAX / 4)
+			.get_property(true, event.window, event.atom, format, 0, u32::MAX / 4)
 			.map_err(into_unknown)?
 			.reply()
 			.map_err(into_unknown)?;
@@ -664,6 +679,42 @@ impl ClipboardContext {
 		Err(Error::Unknown {
 			description: "The handover was not finished and the condvar didn't time out, yet the condvar wait ended. This should be unreachable.".into()
 		})
+	}
+
+	fn get_content_types(&self, selection: LinuxClipboardKind) -> Result<Vec<String>> {
+		let reader = XContext::new()?;
+
+		// Delete the property so that we can detect (using property notify)
+		// when the selection owner receives our request.
+		reader
+			.conn
+			.delete_property(reader.win_id, self.atoms.ARBOARD_CLIPBOARD)
+			.map_err(into_unknown)?;
+
+		// request to convert the clipboard selection to our data type(s)
+		reader
+			.conn
+			.convert_selection(
+				reader.win_id,
+				self.atom_of(selection),
+				self.atoms.TARGETS,
+				self.atoms.ARBOARD_CLIPBOARD,
+				Time::CURRENT_TIME,
+			)
+			.map_err(into_unknown)?;
+		reader.conn.sync().map_err(into_unknown)?;
+
+		trace!("Finished `convert_selection`");
+
+		let response = self.read_response(&reader, self.atoms.TARGETS, self.atoms.ATOM)?;
+		let (prefix, atoms, suffix) = unsafe { response.align_to::<u32>() };
+		if prefix.len() != 0 || suffix.len() != 0 {
+			panic!(
+				"get_content_types: response is not aligned ({:x?}, {:x?}, {:x?})",
+				prefix, atoms, suffix
+			);
+		}
+		atoms.iter().map(|a| self.atom_name(*a)).collect()
 	}
 }
 
@@ -873,23 +924,36 @@ impl X11ClipboardContext {
 		self.inner.write(data, LinuxClipboardKind::Clipboard)
 	}
 
-	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+	pub(crate) fn get_content_types(
+		&mut self,
+		selection: LinuxClipboardKind,
+	) -> Result<Vec<ContentType>, Error> {
+		self.inner
+			.get_content_types(selection)
+			.map(|result| result.into_iter().map(ContentType::Custom).collect())
+	}
+
+	pub(crate) fn get_content_for_type(
+		&mut self,
+		ct: &ContentType,
+		selection: LinuxClipboardKind,
+	) -> Result<Vec<u8>, Error> {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+	pub(crate) fn set_content_types(
+		&mut self,
+		map: HashMap<ContentType, Vec<u8>>,
+		selection: LinuxClipboardKind,
+	) -> Result<(), Error> {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
-		Err(Error::Unknown { description: "unsupported for this platform".into() })
-	}
-
-	pub fn normalize_content_type(ct: ContentType) -> ContentType {
+	pub(crate) fn normalize_content_type(ct: ContentType) -> ContentType {
 		todo!("not implemented for this platform")
 	}
 
-	pub fn denormalize_content_type(ct: ContentType) -> String {
+	pub(crate) fn denormalize_content_type(ct: ContentType) -> String {
 		todo!("not implemented for this platform")
 	}
 }
