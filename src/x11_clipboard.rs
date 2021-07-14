@@ -47,7 +47,6 @@ use crate::common::ContentType;
 #[cfg(feature = "image-data")]
 use crate::{common_linux::encode_as_png, ImageData};
 use crate::{common_linux::into_unknown, Error, LinuxClipboardKind};
-use std::convert::TryFrom;
 use std::str::FromStr;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -709,8 +708,10 @@ impl ClipboardContext {
 		trace!("Finished `convert_selection`");
 
 		let response = self.read_response(&reader, self.atoms.TARGETS, self.atoms.ATOM)?;
+		// This unsafe block is actually safe because we're just casting contiguous u8's
+		// as u32's; all types are Copy and nothing bad happens.
 		let (prefix, atoms, suffix) = unsafe { response.align_to::<u32>() };
-		if prefix.len() != 0 || suffix.len() != 0 {
+		if !prefix.is_empty() || !suffix.is_empty() {
 			panic!(
 				"get_content_types: response is not aligned ({:x?}, {:x?}, {:x?})",
 				prefix, atoms, suffix

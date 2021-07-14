@@ -33,6 +33,7 @@ clipboard-win = "4.0"
 image = { version = "0.23.12", optional = true, default-features = false, features = ["bmp"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+lazy_static = "1.4"
 objc = "0.2"
 objc_id = "0.1"
 objc-foundation = "0.1"

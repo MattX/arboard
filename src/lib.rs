@@ -12,6 +12,8 @@ and conditions of the chosen license apply to this file.
 #![crate_type = "lib"]
 #![crate_type = "dylib"]
 #![crate_type = "rlib"]
+// TODO remove me
+#![allow(dead_code)]
 
 mod common;
 #[cfg(feature = "image-data")]

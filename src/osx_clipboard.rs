@@ -22,11 +22,19 @@ use objc::runtime::{Class, Object};
 #[cfg(feature = "image-data")]
 use objc::runtime::{BOOL, NO};
 use objc::{msg_send, sel, sel_impl};
-use objc_foundation::{INSArray, INSObject, INSString};
+use objc_foundation::{INSArray, INSData, INSFastEnumeration, INSObject, INSString, NSData};
 use objc_foundation::{NSArray, NSDictionary, NSObject, NSString};
 use objc_id::{Id, Owned};
 use std::collections::HashMap;
 use std::mem::transmute;
+use std::sync::MutexGuard;
+
+// creating or accessing the OSX pasteboard is not thread-safe, and needs to be protected
+// see https://github.com/alacritty/copypasta/issues/11.
+lazy_static! {
+	static ref CLIPBOARD_CONTEXT_MUTEX: Mutex<ClipboardMutexToken> =
+		Mutex::new(ClipboardMutexToken {});
+}
 
 // required to bring NSPasteboard into the path of the class-resolver
 #[link(name = "AppKit", kind = "framework")]
@@ -90,6 +98,11 @@ pub struct OSXClipboardContext {
 
 impl OSXClipboardContext {
 	pub(crate) fn new() -> Result<OSXClipboardContext, Error> {
+		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
+		if !lock.is_ok() {
+			panic!("could not acquire mutex");
+		}
+
 		let cls = Class::get("NSPasteboard")
 			.ok_or(Error::Unknown { description: "Class::get(\"NSPasteboard\")".into() })?;
 		let pasteboard: *mut Object = unsafe { msg_send![cls, generalPasteboard] };
@@ -102,6 +115,11 @@ impl OSXClipboardContext {
 		Ok(OSXClipboardContext { pasteboard })
 	}
 	pub(crate) fn get_text(&mut self) -> Result<String, Error> {
+		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
+		if !lock.is_ok() {
+			panic!("could not acquire mutex");
+		}
+
 		let string_class: Id<NSObject> = {
 			let cls: Id<Class> = unsafe { Id::from_ptr(class("NSString")) };
 			unsafe { transmute(cls) }
@@ -123,6 +141,11 @@ impl OSXClipboardContext {
 		}
 	}
 	pub(crate) fn set_text(&mut self, data: String) -> Result<(), Error> {
+		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
+		if !lock.is_ok() {
+			panic!("could not acquire mutex");
+		}
+
 		let string_array = NSArray::from_vec(vec![NSString::from_str(&data)]);
 		let _: usize = unsafe { msg_send![self.pasteboard, clearContents] };
 		let success: bool = unsafe { msg_send![self.pasteboard, writeObjects: string_array] };
@@ -136,6 +159,11 @@ impl OSXClipboardContext {
 	#[cfg(feature = "image-data")]
 	pub(crate) fn get_image(&mut self) -> Result<ImageData, Error> {
 		use std::io::Cursor;
+
+		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
+		if !lock.is_ok() {
+			panic!("could not acquire mutex");
+		}
 
 		let image_class: Id<NSObject> = {
 			let cls: Id<Class> = unsafe { Id::from_ptr(class("NSImage")) };
@@ -194,6 +222,11 @@ impl OSXClipboardContext {
 
 	#[cfg(feature = "image-data")]
 	pub(crate) fn set_image(&mut self, data: ImageData) -> Result<(), Error> {
+		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
+		if !lock.is_ok() {
+			panic!("could not acquire mutex");
+		}
+
 		let pixels = data.bytes.into();
 		let image = image_from_pixels(pixels, data.width, data.height)
 			.map_err(|_| Error::ConversionFailure)?;
@@ -211,26 +244,116 @@ impl OSXClipboardContext {
 	}
 
 	pub(crate) fn get_content_types(&mut self) -> Result<Vec<String>, Error> {
-		Err(Error::Unknown { description: "unsupported for this platform".into() })
+		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
+		if !lock.is_ok() {
+			panic!("could not acquire mutex");
+		}
+
+		let first_item = self.first_item(&mut lock.unwrap());
+		if first_item.is_none() {
+			return Ok(Vec::new());
+		}
+		let types: Id<NSArray<NSString>> = unsafe {
+			let types: *mut NSArray<NSString> = msg_send![first_item.unwrap(), types];
+			Id::from_ptr(types)
+		};
+		Ok(types.enumerator().into_iter().map(|t| t.into()).collect())
 	}
 
 	pub(crate) fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
-		Err(Error::Unknown { description: "unsupported for this platform".into() })
+		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
+		if !lock.is_ok() {
+			panic!("could not acquire mutex");
+		}
+
+		let first_item = self.first_item(&mut lock.unwrap());
+		if first_item.is_none() {
+			return Err("clipboard is empty".into());
+		}
+		let typ: Id<NSString> = ct.into();
+		let data: Id<NSData> = unsafe {
+			let data: *mut NSData = msg_send![self.pasteboard, dataForType: typ];
+			if data.is_null() {
+				return Err(format!("clipboard does not have data for {:?}", &ct).into());
+			}
+			Id::from_ptr(data)
+		};
+		Ok(data.bytes().to_vec())
 	}
 
 	pub(crate) fn set_content_types(
 		&mut self,
 		map: HashMap<ContentType, Vec<u8>>,
 	) -> Result<(), Error> {
-		Err(Error::Unknown { description: "unsupported for this platform".into() })
+		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
+		if !lock.is_ok() {
+			panic!("could not acquire mutex");
+		}
+		let cls = Class::get("NSPasteboardItem").ok_or("Class::get(\"NSPasteboardItem\")")?;
+		let pasteboard_item: Id<NSObject> = unsafe {
+			let item: *mut NSObject = msg_send![cls, new];
+			Id::from_ptr(item)
+		};
+		for (ct, data) in map.into_iter() {
+			let data = NSData::from_vec(data);
+			let typ: Id<NSString> = (&ct).into();
+			unsafe { msg_send![pasteboard_item, setData:data forType:typ] }
+		}
+		let items = NSArray::from_vec(vec![pasteboard_item]);
+		let result: BOOL = unsafe {
+			let _: () = msg_send![self.pasteboard, clearContents];
+			msg_send![self.pasteboard, writeObjects: items]
+		};
+		if result == NO {
+			Err("writeObject failed".into())
+		} else {
+			Ok(())
+		}
 	}
 
 	pub(crate) fn normalize_content_type(&self, s: String) -> ContentType {
-		todo!("not implemented for this platform")
+		match s.as_str() {
+			"public.file-url" => ContentType::Url,
+			"public.html" => ContentType::Html,
+			"com.adobe.pdf" => ContentType::Pdf,
+			"public.png" => ContentType::Png,
+			"public.rtf" => ContentType::Rtf,
+			"public.utf8-plain-text" => ContentType::Text,
+			_ => ContentType::Custom(s),
+		}
 	}
 
 	pub(crate) fn denormalize_content_type(&self, ct: ContentType) -> String {
-		todo!("not implemented for this platform")
+		match ct {
+			ContentType::Url => "public.file-url",
+			ContentType::Html => "public.html",
+			ContentType::Pdf => "com.adobe.pdf",
+			ContentType::Png => "public.png",
+			ContentType::Rtf => "public.rtf",
+			ContentType::Text => "public.utf8-plain-text",
+			ContentType::Custom(s) => return s,
+		}
+		.into()
+	}
+
+	/// Gets the first item from the pasteboard.
+	///
+	/// Requires a mutex guard to prove that we hold the mutex. This method is called from methods
+	/// which might need to hold the mutex, so it doesn't lock it itself.
+	fn first_item(&self, _guard: &mut MutexGuard<ClipboardMutexToken>) -> Option<&NSObject> {
+		unsafe {
+			// TODO I don't understand the memory model here. The NSArray we get is a copy, as
+			//      seen in https://developer.apple.com/documentation/appkit/nspasteboard/1529995-pasteboarditems?language=objc
+			//      but the elements themselves are not. So when are they deallocated? On the next
+			//      call to pasteboardItems? That seems wasteful?
+			// TODO valgrind this
+			let items: *mut NSArray<NSObject> = msg_send![self.pasteboard, pasteboardItems];
+			if items.is_null() {
+				return None;
+			}
+			let _id_items: Id<NSArray<NSObject>> = Id::from_ptr(items);
+			(&*items).first_object()
+		}
 	}
 }
 
