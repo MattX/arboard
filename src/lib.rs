@@ -104,9 +104,8 @@ impl Clipboard {
 		self.platform.set_image(image)
 	}
 
-	/// Get the list of content types supported by the current clipboard item. Content types
-	/// are returned normalized.
-	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+	/// Get the list of content types supported by the current clipboard item.
+	pub fn get_content_types(&mut self) -> Result<Vec<String>, Error> {
 		self.platform.get_content_types()
 	}
 

@@ -221,8 +221,8 @@ impl LinuxClipboard {
 		}
 	}
 
-	// TODO make these available for PRIMARY and SECONDARY
-	pub fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+	// TODO make all methods below available for PRIMARY and SECONDARY
+	pub fn get_content_types(&mut self) -> Result<Vec<String>, Error> {
 		match self {
 			Self::X11(cb) => cb.get_content_types(LinuxClipboardKind::Clipboard),
 

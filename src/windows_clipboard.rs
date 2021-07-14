@@ -314,7 +314,7 @@ impl WindowsClipboardContext {
 		result
 	}
 
-	pub(crate) fn get_content_types(&mut self) -> Result<Vec<ContentType>, Error> {
+	pub(crate) fn get_content_types(&mut self) -> Result<Vec<String>, Error> {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 

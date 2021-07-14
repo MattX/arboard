@@ -929,10 +929,8 @@ impl X11ClipboardContext {
 	pub(crate) fn get_content_types(
 		&mut self,
 		selection: LinuxClipboardKind,
-	) -> Result<Vec<ContentType>, Error> {
-		self.inner.get_content_types(selection).map(|result| {
-			result.into_iter().map(X11ClipboardContext::normalize_content_type).collect()
-		})
+	) -> Result<Vec<String>, Error> {
+		self.inner.get_content_types(selection)
 	}
 
 	pub(crate) fn get_content_for_type(
@@ -958,9 +956,19 @@ impl X11ClipboardContext {
 			return ContentType::Text;
 		}
 		if let Ok(mime_type) = mime::Mime::from_str(&s) {
-			if mime_type == mime::TEXT_PLAIN_UTF_8 {
+			if mime_type.type_() == mime::TEXT {
+				// Only consider text formats if they're in UTF-8, or in US-ASCII (as that's
+				// still UTF-8), or have no encoding specified (which means they're US-ASCII).
+				if let Some(charset) = mime_type.get_param(mime::CHARSET) {
+					let charset_lower = charset.as_str().to_ascii_lowercase();
+					if charset_lower != "utf-8" && charset_lower != "us-ascii" {
+						return ContentType::Custom(s);
+					}
+				}
+			}
+			if mime_type.essence_str() == mime::TEXT_PLAIN {
 				return ContentType::Text;
-			} else if mime_type == mime::TEXT_HTML_UTF_8 {
+			} else if mime_type.essence_str() == mime::TEXT_HTML {
 				return ContentType::Html;
 			} else if mime_type == mime::APPLICATION_PDF {
 				return ContentType::Pdf;

@@ -160,7 +160,7 @@ impl WaylandDataControlClipboardContext {
 	pub(crate) fn get_content_types(
 		&mut self,
 		selection: LinuxClipboardKind,
-	) -> Result<Vec<ContentType>, Error> {
+	) -> Result<Vec<String>, Error> {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
