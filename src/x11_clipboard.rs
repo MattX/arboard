@@ -117,9 +117,9 @@ struct ClipboardContext {
 	/// requests coming to us.
 	server: XContext,
 	atoms: Atoms,
-	clipboard_data: RwLock<Option<ClipboardData>>,
-	primary_data: RwLock<Option<ClipboardData>>,
-	secondary_data: RwLock<Option<ClipboardData>>,
+	clipboard_data: RwLock<Option<ClipboardItem>>,
+	primary_data: RwLock<Option<ClipboardItem>>,
+	secondary_data: RwLock<Option<ClipboardItem>>,
 
 	handover_state: Mutex<ManagerHandoverState>,
 	handover_cv: Condvar,
@@ -169,7 +169,7 @@ impl XContext {
 }
 
 #[derive(Debug, Clone)]
-struct ClipboardData {
+struct ClipboardItem {
 	bytes: Vec<u8>,
 
 	/// The atom representing the format in which the data is encoded.
@@ -200,7 +200,7 @@ impl ClipboardContext {
 		})
 	}
 
-	fn write(&self, data: ClipboardData, selection: LinuxClipboardKind) -> Result<()> {
+	fn write(&self, data: ClipboardItem, selection: LinuxClipboardKind) -> Result<()> {
 		if self.serve_stopped.load(Ordering::Relaxed) {
 			return Err(Error::Unknown {
                 description: "The clipboard handler thread seems to have stopped. Logging messages may reveal the cause. (See the `log` crate.)".into()
@@ -227,7 +227,7 @@ impl ClipboardContext {
 	/// `formats` must be a slice of atoms, where each atom represents a target format.
 	/// The first format from `formats`, which the clipboard owner supports will be the
 	/// format of the return value.
-	fn read(&self, formats: &[Atom], selection: LinuxClipboardKind) -> Result<ClipboardData> {
+	fn read(&self, formats: &[Atom], selection: LinuxClipboardKind) -> Result<ClipboardItem> {
 		// if we are the current owner, we can get the current clipboard ourselves
 		if self.is_owner(selection)? {
 			let data = self.data_of(selection).read();
@@ -246,7 +246,7 @@ impl ClipboardContext {
 		for format in formats {
 			match self.read_single(&reader, selection, *format) {
 				Ok(bytes) => {
-					return Ok(ClipboardData { bytes, format: *format });
+					return Ok(ClipboardItem { bytes, format: *format });
 				}
 				Err(Error::ContentNotAvailable) => {
 					continue;
@@ -361,7 +361,7 @@ impl ClipboardContext {
 		}
 	}
 
-	fn data_of(&self, selection: LinuxClipboardKind) -> &RwLock<Option<ClipboardData>> {
+	fn data_of(&self, selection: LinuxClipboardKind) -> &RwLock<Option<ClipboardItem>> {
 		match selection {
 			LinuxClipboardKind::Clipboard => &self.clipboard_data,
 			LinuxClipboardKind::Primary => &self.primary_data,
@@ -391,6 +391,16 @@ impl ClipboardContext {
 		Ok(current == self.server.win_id)
 	}
 
+	fn intern_atom(&self, s: &str) -> Result<Atom> {
+		self.server
+			.conn
+			.intern_atom(false, s.as_bytes())
+			.map_err(into_unknown)?
+			.reply()
+			.map(|r| r.atom)
+			.map_err(into_unknown)
+	}
+
 	fn atom_name(&self, atom: x11rb::protocol::xproto::Atom) -> Result<String> {
 		String::from_utf8(
 			self.server
@@ -403,6 +413,7 @@ impl ClipboardContext {
 		)
 		.map_err(into_unknown)
 	}
+
 	fn atom_name_dbg(&self, atom: x11rb::protocol::xproto::Atom) -> &'static str {
 		ATOM_NAME_CACHE.with(|cache| {
 			let mut cache = cache.borrow_mut();
@@ -751,7 +762,7 @@ fn serve_requests(clipboard: Arc<ClipboardContext>) -> Result<(), Box<dyn std::e
 		clip.handover_cv.notify_all();
 	}
 
-	trace!("Started serve reqests thread.");
+	trace!("Started serve requests thread.");
 
 	let _guard = ScopeGuard::new(|| {
 		clipboard.serve_stopped.store(true, Ordering::Relaxed);
@@ -832,7 +843,7 @@ fn serve_requests(clipboard: Arc<ClipboardContext>) -> Result<(), Box<dyn std::e
 				}
 			}
 			_event => {
-				// May be useful for debbuging but nothing else really.
+				// May be useful for debugging but nothing else really.
 				// trace!("Received unwanted event: {:?}", event);
 			}
 		}
@@ -849,17 +860,16 @@ impl X11ClipboardContext {
 		if let Some(global_cb) = &*global_cb {
 			return Ok(Self { inner: Arc::clone(&global_cb.context) });
 		}
-		// At this point we know that the clipboard does not exists.
+		// At this point we know that the clipboard does not exist.
 		let ctx = Arc::new(ClipboardContext::new()?);
-		let join_handle;
-		{
+		let join_handle = {
 			let ctx = Arc::clone(&ctx);
-			join_handle = std::thread::spawn(move || {
+			std::thread::spawn(move || {
 				if let Err(error) = serve_requests(ctx) {
 					error!("Worker thread errored with: {}", error);
 				}
-			});
-		}
+			})
+		};
 		*global_cb =
 			Some(GlobalClipboard { context: Arc::clone(&ctx), server_handle: join_handle });
 		Ok(Self { inner: ctx })
@@ -869,7 +879,7 @@ impl X11ClipboardContext {
 		self.get_text_with_clipboard(LinuxClipboardKind::Clipboard)
 	}
 
-	pub(crate) fn get_text_with_clipboard(&self, selection: LinuxClipboardKind) -> Result<String> {
+	pub fn get_text_with_clipboard(&self, selection: LinuxClipboardKind) -> Result<String> {
 		let formats = [
 			self.inner.atoms.UTF8_STRING,
 			self.inner.atoms.UTF8_MIME_0,
@@ -892,13 +902,13 @@ impl X11ClipboardContext {
 		self.set_text_with_clipboard(message, LinuxClipboardKind::Clipboard)
 	}
 
-	pub(crate) fn set_text_with_clipboard(
+	pub fn set_text_with_clipboard(
 		&self,
 		message: String,
 		selection: LinuxClipboardKind,
 	) -> Result<()> {
 		let data =
-			ClipboardData { bytes: message.into_bytes(), format: self.inner.atoms.UTF8_STRING };
+			ClipboardItem { bytes: message.into_bytes(), format: self.inner.atoms.UTF8_STRING };
 		self.inner.write(data, selection)
 	}
 
@@ -923,26 +933,28 @@ impl X11ClipboardContext {
 	#[cfg(feature = "image-data")]
 	pub fn set_image(&self, image: ImageData) -> Result<()> {
 		let encoded = encode_as_png(&image)?;
-		let data = ClipboardData { bytes: encoded, format: self.inner.atoms.PNG_MIME };
+		let data = ClipboardItem { bytes: encoded, format: self.inner.atoms.PNG_MIME };
 		self.inner.write(data, LinuxClipboardKind::Clipboard)
 	}
 
-	pub(crate) fn get_content_types(
+	pub fn get_content_types(
 		&mut self,
 		selection: LinuxClipboardKind,
 	) -> Result<Vec<String>, Error> {
 		self.inner.get_content_types(selection)
 	}
 
-	pub(crate) fn get_content_for_type(
+	pub fn get_content_for_type(
 		&mut self,
 		ct: &ContentType,
 		selection: LinuxClipboardKind,
 	) -> Result<Vec<u8>, Error> {
-		Err(Error::Unknown { description: "unsupported for this platform".into() })
+		let format_atom =
+			self.inner.intern_atom(&X11ClipboardContext::denormalize_content_type(ct.clone()))?;
+		self.inner.read(&[format_atom], selection).map(|r| r.bytes)
 	}
 
-	pub(crate) fn set_content_types(
+	pub fn set_content_types(
 		&mut self,
 		map: HashMap<ContentType, Vec<u8>>,
 		selection: LinuxClipboardKind,
@@ -950,7 +962,7 @@ impl X11ClipboardContext {
 		Err(Error::Unknown { description: "unsupported for this platform".into() })
 	}
 
-	pub(crate) fn normalize_content_type(s: String) -> ContentType {
+	pub fn normalize_content_type(s: String) -> ContentType {
 		if s == "ADOBE_PORTABLE_DOCUMENT_FORMAT" {
 			return ContentType::Pdf;
 		} else if s == "UTF8_STRING" {
@@ -982,7 +994,7 @@ impl X11ClipboardContext {
 		ContentType::Custom(s)
 	}
 
-	pub(crate) fn denormalize_content_type(ct: ContentType) -> String {
+	pub fn denormalize_content_type(ct: ContentType) -> String {
 		match ct {
 			ContentType::Text => mime::TEXT_PLAIN_UTF_8.to_string(),
 			ContentType::Html => mime::TEXT_HTML_UTF_8.to_string(),
@@ -1005,7 +1017,7 @@ impl Drop for X11ClipboardContext {
 		// conditions below.
 		let mut global_cb = CLIPBOARD.lock();
 		if Arc::strong_count(&self.inner) == MIN_OWNERS {
-			// If the are the only owers of the clipboard are ourselves and
+			// If the are the only owners of the clipboard are ourselves and
 			// the global object, then we should destroy the global object,
 			// and send the data to the clipboard manager
 

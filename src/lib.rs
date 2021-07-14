@@ -22,17 +22,17 @@ pub use common::{ContentType, Error};
 use std::collections::HashMap;
 
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android", target_os = "emscripten")),))]
-pub(crate) mod common_linux;
+mod common_linux;
 
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android", target_os = "emscripten")),))]
-pub mod x11_clipboard;
+mod x11_clipboard;
 
 #[cfg(all(
 	unix,
 	not(any(target_os = "macos", target_os = "android", target_os = "emscripten")),
 	feature = "wayland-data-control"
 ))]
-pub mod wayland_data_control_clipboard;
+mod wayland_data_control_clipboard;
 
 #[cfg(windows)]
 pub mod windows_clipboard;
@@ -59,11 +59,10 @@ pub use common_linux::{ClipboardExtLinux, LinuxClipboardKind};
 /// that all `Clipboard`s must be 'dropped' before the program exits. In most scenarios this happens
 /// automatically but there are frameworks (for example `winit`) that take over the execution
 /// and where the objects don't get dropped when the application exits. In these cases you have to
-/// make sure the object is dropped by taking ownership of it in a confined scope when detecting
-/// that your application is about to quit.
+/// make sure the object is dropped when detecting that your application is about to quit.
 ///
 /// It is also valid to have multiple `Clipboards` on separate threads at once but note that
-/// executing multiple clipboard operations in paralell might fail with a `ClipboardOccupied` error.
+/// executing multiple clipboard operations in parallel might fail with a `ClipboardOccupied` error.
 pub struct Clipboard {
 	pub(crate) platform: PlatformClipboard,
 }
