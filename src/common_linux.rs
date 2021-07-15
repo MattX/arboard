@@ -78,7 +78,6 @@ pub enum LinuxClipboardKind {
 	Secondary,
 }
 
-// TODO Linux -> Unix? X11 / Wayland
 /// Linux has a concept of clipboard "selections" which tend to be used in different contexts. This
 /// trait extension provides a way to get/set to a specific clipboard (the default
 /// [LinuxClipboardKind::Clipboard] being used for the common platform API).
@@ -169,7 +168,6 @@ impl LinuxClipboard {
 		Ok(Self::X11(X11ClipboardContext::new()?))
 	}
 
-	// TODO make a macro to avoid repetition?
 	/// Fetches utf-8 text from the clipboard and returns it.
 	pub fn get_text(&mut self) -> Result<String, Error> {
 		match self {

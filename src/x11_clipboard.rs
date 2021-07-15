@@ -186,6 +186,7 @@ type ClipboardData = HashMap<Atom, Vec<u8>>;
 enum ReadSelNotifyResult {
 	GotData(Vec<u8>),
 	IncrStarted,
+	EventNotRecognized,
 }
 
 impl ClipboardContext {
@@ -246,6 +247,9 @@ impl ClipboardContext {
 			}
 			return Err(Error::ContentNotAvailable);
 		}
+		// if let Some(data) = self.data.read().clone() {
+		//     return Ok(data)
+		// }
 		let reader = XContext::new()?;
 
 		trace!("Trying to get the clipboard data.");
@@ -290,7 +294,6 @@ impl ClipboardContext {
 		reader.conn.sync().map_err(into_unknown)?;
 
 		trace!("Finished `convert_selection`");
-		// TODO is target_format always target + format?
 		self.read_response(reader, target_format, target_format)
 	}
 
@@ -305,7 +308,6 @@ impl ClipboardContext {
 			let event = match event {
 				Some(e) => e,
 				None => {
-					// TODO this is gross?
 					std::thread::sleep(Duration::from_millis(1));
 					continue;
 				}
@@ -331,6 +333,7 @@ impl ClipboardContext {
 							using_incr = true;
 							timeout_end += SHORT_TIMEOUT_DUR;
 						}
+						ReadSelNotifyResult::EventNotRecognized => (),
 					}
 				}
 				// If the previous SelectionNotify event specified that the data
@@ -452,23 +455,16 @@ impl ClipboardContext {
 		// According to: https://tronche.com/gui/x/icccm/sec-2.html#s-2.4
 		// the target must be set to the same as what we requested.
 		if event.property == NONE || event.target != target {
-			warn!(
-				"rejecting event {:?} with target {}",
-				event,
-				self.atom_name(event.target).unwrap()
-			);
 			return Err(Error::ContentNotAvailable);
 		}
 		if self.kind_of(event.selection).is_none() {
-			return Err(Error::Unknown { description: "received a SelectionNotify for a selection other than CLIPBOARD, PRIMARY or SECONDARY. This is unexpected.".into() });
+			log::info!("Received a SelectionNotify for a selection other than CLIPBOARD, PRIMARY or SECONDARY. This is unexpected.");
+			return Ok(ReadSelNotifyResult::EventNotRecognized);
 		}
 		if using_incr {
-			return Err(Error::Unknown {
-				description: "received a SelectionNotify while already expecting INCR segments."
-					.into(),
-			});
+			log::warn!("Received a SelectionNotify while already expecting INCR segments.");
+			return Ok(ReadSelNotifyResult::EventNotRecognized);
 		}
-
 		// request the selection
 		let mut reply = reader
 			.conn
@@ -476,6 +472,8 @@ impl ClipboardContext {
 			.map_err(into_unknown)?
 			.reply()
 			.map_err(into_unknown)?;
+
+		// trace!("Property.type: {:?}", self.atom_name(reply.type_));
 
 		// we found something
 		if reply.type_ == format {
@@ -498,7 +496,7 @@ impl ClipboardContext {
 				.map_err(into_unknown)?
 				.reply()
 				.map_err(into_unknown)?;
-			trace!("Receiving INCR segments");
+			log::trace!("Receiving INCR segments");
 			if reply.value_len == 4 {
 				let min_data_len = reply.value32().and_then(|mut vals| vals.next()).unwrap_or(0);
 				incr_data.reserve(min_data_len as usize);
@@ -528,12 +526,10 @@ impl ClipboardContext {
 		if event.atom != self.atoms.ARBOARD_CLIPBOARD || event.state != Property::NEW_VALUE {
 			return Ok(false);
 		}
-
 		if !using_incr {
 			warn!("received a PropertyNotify while not in INCR mode: {:?}", event);
 			return Ok(false);
 		}
-
 		let reply = reader
 			.conn
 			.get_property(true, event.window, event.atom, format, 0, u32::MAX / 4)
@@ -573,14 +569,6 @@ impl ClipboardContext {
 			let data = self.data_of(selection).read();
 			if let Some(data) = &*data {
 				targets.extend(data.keys());
-				// TODO: I removed the following, because if someone *actually* asks us for
-				//       say, UTF8_MIME_0, we don't actually respond below.
-				// if data.contains_key(&self.atoms.UTF8_STRING) {
-				// 	// When we are storing a UTF8 string,
-				// 	// add all equivalent formats to the supported targets
-				// 	targets.push(self.atoms.UTF8_MIME_0);
-				// 	targets.push(self.atoms.UTF8_MIME_1);
-				// }
 			}
 			self.server
 				.conn
@@ -596,7 +584,7 @@ impl ClipboardContext {
 			self.server.conn.flush().map_err(into_unknown)?;
 			success = true;
 		} else {
-			trace!("Handling request for the clipboard contents. Target {}", self.atom_name_dbg(event.target));
+			trace!("Handling request for (probably) the clipboard contents. Target {}", self.atom_name_dbg(event.target));
 			let data = self.data_of(selection).read();
 			if let Some(data) = &*data {
 				if let Some(val) = data.get(&event.target) {
@@ -647,8 +635,11 @@ impl ClipboardContext {
 	}
 
 	fn ask_clipboard_manager_to_request_our_data(&self) -> Result<()> {
-		// This shouldn't really ever happen but let's just check.
-		assert_ne!(self.server.win_id, 0, "The server's window id was 0. This is unexpected");
+		if self.server.win_id == 0 {
+			// This shouldn't really ever happen but let's just check.
+			error!("The server's window id was 0. This is unexpected");
+			return Ok(());
+		}
 
 		if !self.is_owner(LinuxClipboardKind::Clipboard)? {
 			// We are not owning the clipboard, nothing to do.
@@ -678,7 +669,7 @@ impl ClipboardContext {
 		self.server.conn.flush().map_err(into_unknown)?;
 
 		*handover_state = ManagerHandoverState::InProgress;
-		let max_handover_duration = Duration::from_millis(1_000);
+		let max_handover_duration = Duration::from_millis(100);
 
 		// Note that we are using a parking_lot condvar here, which doesn't wake up
 		// spuriously
@@ -806,7 +797,7 @@ fn serve_requests(clipboard: Arc<ClipboardContext>) -> Result<(), Box<dyn std::e
 				// make sure we save that we have finished writing
 				let handover_state = clipboard.handover_state.lock();
 				if *handover_state == ManagerHandoverState::InProgress {
-					// Only set written when the actual contents have been written,
+					// Only set written, when the actual contents were written,
 					// not just a response to what TARGETS we have.
 					if event.target != clipboard.atoms.TARGETS {
 						trace!("The contents were written to the clipboard manager.");
@@ -883,7 +874,7 @@ impl X11ClipboardContext {
 		self.get_text_with_clipboard(LinuxClipboardKind::Clipboard)
 	}
 
-	pub fn get_text_with_clipboard(&self, selection: LinuxClipboardKind) -> Result<String> {
+	pub(crate) fn get_text_with_clipboard(&self, selection: LinuxClipboardKind) -> Result<String> {
 		let formats = [
 			self.inner.atoms.UTF8_STRING,
 			self.inner.atoms.UTF8_MIME_0,
@@ -906,7 +897,7 @@ impl X11ClipboardContext {
 		self.set_text_with_clipboard(message, LinuxClipboardKind::Clipboard)
 	}
 
-	pub fn set_text_with_clipboard(
+	pub(crate) fn set_text_with_clipboard(
 		&self,
 		message: String,
 		selection: LinuxClipboardKind,
