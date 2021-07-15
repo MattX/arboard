@@ -11,6 +11,9 @@ and conditions of the chosen license apply to this file.
 // More info about using the clipboard on X11:
 // https://tronche.com/gui/x/icccm/sec-2.html#s-2.6
 // https://freedesktop.org/wiki/ClipboardManager/
+//
+// TODO: According to the tronche.com link above, we must support MULTIPLE and TIMESTAMP in
+//       addition to TARGETS.
 
 use std::{
 	cell::RefCell,
@@ -567,7 +570,6 @@ impl ClipboardContext {
 			trace!("Handling TARGETS, dst property is {}", self.atom_name_dbg(event.property));
 			let mut targets = Vec::with_capacity(10);
 			targets.push(self.atoms.TARGETS);
-			targets.push(self.atoms.SAVE_TARGETS);
 			let data = self.data_of(selection).read();
 			if let Some(data) = &*data {
 				targets.extend(data.keys());
@@ -594,7 +596,7 @@ impl ClipboardContext {
 			self.server.conn.flush().map_err(into_unknown)?;
 			success = true;
 		} else {
-			trace!("Handling request for (probably) the clipboard contents.");
+			trace!("Handling request for the clipboard contents. Target {}", self.atom_name_dbg(event.target));
 			let data = self.data_of(selection).read();
 			if let Some(data) = &*data {
 				if let Some(val) = data.get(&event.target) {
@@ -622,7 +624,7 @@ impl ClipboardContext {
 		}
 		// on failure we notify the requester of it
 		let property = if success { event.property } else { AtomEnum::NONE.into() };
-		// tell the requestor that we finished sending data
+		// tell the requester that we finished sending data
 		self.server
 			.conn
 			.send_event(
@@ -645,11 +647,8 @@ impl ClipboardContext {
 	}
 
 	fn ask_clipboard_manager_to_request_our_data(&self) -> Result<()> {
-		if self.server.win_id == 0 {
-			// This shouldn't really ever happen but let's just check.
-			error!("The server's window id was 0. This is unexpected");
-			return Ok(());
-		}
+		// This shouldn't really ever happen but let's just check.
+		assert_ne!(self.server.win_id, 0, "The server's window id was 0. This is unexpected");
 
 		if !self.is_owner(LinuxClipboardKind::Clipboard)? {
 			// We are not owning the clipboard, nothing to do.
@@ -679,10 +678,10 @@ impl ClipboardContext {
 		self.server.conn.flush().map_err(into_unknown)?;
 
 		*handover_state = ManagerHandoverState::InProgress;
-		let max_handover_duration = Duration::from_millis(100);
+		let max_handover_duration = Duration::from_millis(1_000);
 
 		// Note that we are using a parking_lot condvar here, which doesn't wake up
-		// spouriously
+		// spuriously
 		let result = self.handover_cv.wait_for(&mut handover_state, max_handover_duration);
 
 		if *handover_state == ManagerHandoverState::Finished {
@@ -807,7 +806,7 @@ fn serve_requests(clipboard: Arc<ClipboardContext>) -> Result<(), Box<dyn std::e
 				// make sure we save that we have finished writing
 				let handover_state = clipboard.handover_state.lock();
 				if *handover_state == ManagerHandoverState::InProgress {
-					// Only set written, when the actual contents were written,
+					// Only set written when the actual contents have been written,
 					// not just a response to what TARGETS we have.
 					if event.target != clipboard.atoms.TARGETS {
 						trace!("The contents were written to the clipboard manager.");
@@ -1008,7 +1007,7 @@ impl X11ClipboardContext {
 
 	pub fn denormalize_content_type(ct: ContentType) -> String {
 		match ct {
-			ContentType::Text => mime::TEXT_PLAIN_UTF_8.to_string(),
+			ContentType::Text => "UTF8_STRING".to_string(),
 			ContentType::Html => mime::TEXT_HTML_UTF_8.to_string(),
 			ContentType::Pdf => mime::APPLICATION_PDF.to_string(),
 			ContentType::Png => mime::IMAGE_PNG.to_string(),
