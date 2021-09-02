@@ -1,6 +1,6 @@
 [package]
 name = "arboard"
-version = "1.2.1"
+version = "2.0.0"
 authors = ["Artur Kovacs <kovacs.artur.barnabas@gmail.com>", "Avi Weinstock <aweinstock314@gmail.com>"]
 description = "Image and text handling for the OS clipboard."
 repository = "https://github.com/ArturKovacs/arboard"
@@ -29,7 +29,7 @@ winapi = { version = "0.3.9", features = [
     "winbase",
 ]}
 scopeguard = "1.1.0"
-clipboard-win = "4.0"
+clipboard-win = "4.2"
 image = { version = "0.23.12", optional = true, default-features = false, features = ["bmp"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -37,7 +37,7 @@ lazy_static = "1.4"
 objc = "0.2"
 objc_id = "0.1"
 objc-foundation = "0.1"
-core-graphics = { version = "0.21", optional = true }
+core-graphics = { version = "0.22", optional = true }
 image = { version = "0.23", optional = true, default-features = false, features = ["tiff"] }
 
 [target.'cfg(all(unix, not(any(target_os="macos", target_os="android", target_os="emscripten"))))'.dependencies]

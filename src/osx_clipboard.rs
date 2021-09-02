@@ -366,7 +366,8 @@ impl OSXClipboardContext {
 			ContentType::Rtf => "public.rtf",
 			ContentType::Text => "public.utf8-plain-text",
 			ContentType::Custom(s) => return s,
-		}.into()
+		}
+		.into()
 	}
 
 	pub fn denormalize_content_type(&self, ct: ContentType) -> Vec<String> {
