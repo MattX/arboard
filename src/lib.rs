@@ -139,13 +139,21 @@ impl Clipboard {
 	}
 }
 
-/// All tests grouped in one because the windows clipboard cannot be open on
-/// multiple threads at once.
 #[cfg(test)]
-#[test]
-fn all_tests() {
-	let _ = env_logger::builder().is_test(true).try_init();
-	{
+mod tests {
+	use super::*;
+	/// All tests are run serially because the windows clipboard cannot be open on
+	/// multiple threads at once.
+	use serial_test::serial;
+
+	fn setup() {
+		env_logger::builder().is_test(true).try_init().unwrap();
+	}
+
+	#[test]
+	#[serial]
+	fn set_and_get_text() {
+		setup();
 		let mut ctx = Clipboard::new().unwrap();
 		let text = "some string";
 		ctx.set_text(text.to_owned()).unwrap();
@@ -164,32 +172,44 @@ fn all_tests() {
 		let mut ctx = Clipboard::new().unwrap();
 		assert_eq!(ctx.get_text().unwrap(), text);
 	}
-	{
+
+	#[test]
+	#[serial]
+	fn set_and_get_unicode() {
+		setup();
 		let mut ctx = Clipboard::new().unwrap();
 		let text = "Some utf8: 🤓 ∑φ(n)<ε 🐔";
 		ctx.set_text(text.to_owned()).unwrap();
 		assert_eq!(ctx.get_text().unwrap(), text);
 	}
+
 	#[cfg(feature = "image-data")]
-	{
+	#[test]
+	#[serial]
+	fn set_and_get_image() {
+		setup();
 		let mut ctx = Clipboard::new().unwrap();
 		#[rustfmt::skip]
-		let bytes = [
-			255, 100, 100, 255,
-			100, 255, 100, 100,
-			100, 100, 255, 100,
-			0, 0, 0, 255,
-		];
+					let bytes = [
+					255, 100, 100, 255,
+					100, 255, 100, 100,
+					100, 100, 255, 100,
+					0, 0, 0, 255,
+				];
 		let img_data = ImageData { width: 2, height: 2, bytes: bytes.as_ref().into() };
 		ctx.set_image(img_data.clone()).unwrap();
 		let got = ctx.get_image().unwrap();
 		assert_eq!(img_data.bytes, got.bytes);
 	}
+
 	#[cfg(all(
 		unix,
 		not(any(target_os = "macos", target_os = "android", target_os = "emscripten")),
 	))]
-	{
+	#[test]
+	#[serial]
+	fn secondary_clipboard() {
+		setup();
 		use crate::{ClipboardExtLinux, LinuxClipboardKind};
 		let mut ctx = Clipboard::new().unwrap();
 
