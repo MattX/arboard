@@ -41,6 +41,7 @@ use winapi::{
 #[cfg(feature = "image-data")]
 use super::common::ImageData;
 use super::common::{ContentType, Error};
+use crate::common::GetContentResult;
 
 const MAX_OPEN_ATTEMPTS: usize = 5;
 
@@ -314,18 +315,15 @@ impl WindowsClipboardContext {
 		result
 	}
 
-	pub(crate) fn get_content_types(&mut self) -> Result<Vec<String>, Error> {
+	pub fn get_content_types(&mut self) -> Result<Vec<String>, Error> {
 		Err(Error::ClipboardNotSupported)
 	}
 
-	pub(crate) fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+	pub fn get_content_for_type(&mut self, _ct: &[ContentType]) -> Result<GetContentResult, Error> {
 		Err(Error::ClipboardNotSupported)
 	}
 
-	pub(crate) fn set_content_types(
-		&mut self,
-		map: HashMap<ContentType, Vec<u8>>,
-	) -> Result<(), Error> {
+	pub fn set_content_types(&mut self, _map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
 		Err(Error::ClipboardNotSupported)
 	}
 
@@ -333,7 +331,7 @@ impl WindowsClipboardContext {
 		ContentType::Custom(s)
 	}
 
-	pub fn denormalize_content_type(ct: ContentType) -> String {
-		format!("{:?}", ct)
+	pub fn denormalize_content_type(ct: ContentType) -> Vec<String> {
+		vec![format!("{:?}", ct)]
 	}
 }

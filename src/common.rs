@@ -153,3 +153,11 @@ pub enum ContentType {
 	Url,
 	Custom(String),
 }
+
+/// A content type and associated data
+pub struct GetContentResult {
+	/// A content type in denormalized / system-specific format
+	pub content_type: String,
+	/// Associated data
+	pub data: Vec<u8>,
+}

@@ -8,6 +8,7 @@ use wl_clipboard_rs::{
 	utils::is_primary_selection_supported,
 };
 
+use crate::common::GetContentResult;
 #[cfg(feature = "image-data")]
 use crate::{common::ImageData, common_linux::encode_as_png};
 use crate::{
@@ -157,25 +158,25 @@ impl WaylandDataControlClipboardContext {
 		Ok(())
 	}
 
-	pub(crate) fn get_content_types(
+	pub fn get_content_types(
 		&mut self,
-		selection: LinuxClipboardKind,
+		_selection: LinuxClipboardKind,
 	) -> Result<Vec<String>, Error> {
 		Err(Error::ClipboardNotSupported)
 	}
 
-	pub(crate) fn get_content_for_type(
+	pub fn get_content_for_type(
 		&mut self,
-		ct: &ContentType,
-		selection: LinuxClipboardKind,
-	) -> Result<Vec<u8>, Error> {
+		_ct: &[ContentType],
+		_selection: LinuxClipboardKind,
+	) -> Result<GetContentResult, Error> {
 		Err(Error::ClipboardNotSupported)
 	}
 
-	pub(crate) fn set_content_types(
+	pub fn set_content_types(
 		&mut self,
-		map: HashMap<ContentType, Vec<u8>>,
-		selection: LinuxClipboardKind,
+		_map: HashMap<ContentType, Vec<u8>>,
+		_selection: LinuxClipboardKind,
 	) -> Result<(), Error> {
 		Err(Error::ClipboardNotSupported)
 	}
@@ -184,7 +185,7 @@ impl WaylandDataControlClipboardContext {
 		ContentType::Custom(s)
 	}
 
-	pub fn denormalize_content_type(ct: ContentType) -> String {
-		format!("{:?}", ct)
+	pub fn denormalize_content_type(ct: ContentType) -> Vec<String> {
+		vec![format!("{:?}", ct)]
 	}
 }

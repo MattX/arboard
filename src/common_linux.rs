@@ -7,6 +7,7 @@ use crate::wayland_data_control_clipboard::WaylandDataControlClipboardContext;
 #[cfg(feature = "wayland-data-control")]
 use log::{info, warn};
 
+use crate::common::GetContentResult;
 #[cfg(feature = "image-data")]
 use crate::ImageData;
 use crate::{x11_clipboard::X11ClipboardContext, ContentType, Error};
@@ -230,7 +231,7 @@ impl LinuxClipboard {
 		}
 	}
 
-	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+	pub fn get_content_for_type(&mut self, ct: &[ContentType]) -> Result<GetContentResult, Error> {
 		match self {
 			Self::X11(cb) => cb.get_content_for_type(ct, LinuxClipboardKind::Clipboard),
 
@@ -257,7 +258,7 @@ impl LinuxClipboard {
 		}
 	}
 
-	pub fn denormalize_content_type(&self, ct: ContentType) -> String {
+	pub fn denormalize_content_type(&self, ct: ContentType) -> Vec<String> {
 		match self {
 			Self::X11(_cb) => X11ClipboardContext::denormalize_content_type(ct),
 

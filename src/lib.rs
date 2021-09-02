@@ -45,6 +45,7 @@ type PlatformClipboard = windows_clipboard::WindowsClipboardContext;
 #[cfg(target_os = "macos")]
 type PlatformClipboard = osx_clipboard::OSXClipboardContext;
 
+use crate::common::GetContentResult;
 #[cfg(all(
 	unix,
 	not(any(target_os = "macos", target_os = "android", target_os = "emscripten")),
@@ -110,7 +111,7 @@ impl Clipboard {
 	}
 
 	/// Get data for a particular content type
-	pub fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+	pub fn get_content_for_type(&mut self, ct: &[ContentType]) -> Result<GetContentResult, Error> {
 		self.platform.get_content_for_type(ct)
 	}
 
@@ -125,9 +126,15 @@ impl Clipboard {
 		self.platform.normalize_content_type(s)
 	}
 
-	/// Denormalize content type. The resulting string can be used to create a
-	/// [`ContentType::Custom`] instance.
-	pub fn denormalize_content_type(&self, ct: ContentType) -> String {
+	// TODO: return a non-empty vector type?
+	/// Denormalize content type. The resulting strings can be used to create
+	/// [`ContentType::Custom`] instances.
+	///
+	/// A given content type can turn into more than one underlying system type; for instance,
+	/// `html` might turn into both `text/html` and `text/html;charset=utf-8`.
+	///
+	/// The resulting vector is guaranteed to be non-empty.
+	pub fn denormalize_content_type(&self, ct: ContentType) -> Vec<String> {
 		self.platform.denormalize_content_type(ct)
 	}
 }

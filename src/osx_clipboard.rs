@@ -11,6 +11,7 @@ and conditions of the chosen license apply to this file.
 #[cfg(feature = "image-data")]
 use super::common::ImageData;
 use super::common::{ContentType, Error};
+use crate::common::GetContentResult;
 #[cfg(feature = "image-data")]
 use core_graphics::{
 	base::{kCGBitmapByteOrderDefault, kCGImageAlphaLast, kCGRenderingIntentDefault, CGFloat},
@@ -283,7 +284,7 @@ impl OSXClipboardContext {
 		Ok(())
 	}
 
-	pub(crate) fn get_content_types(&mut self) -> Result<Vec<String>, Error> {
+	pub fn get_content_types(&mut self) -> Result<Vec<String>, Error> {
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
 		assert!(lock.is_ok(), "could not acquire mutex");
 
@@ -298,7 +299,7 @@ impl OSXClipboardContext {
 		Ok(types.enumerator().into_iter().map(|t| t.as_str().into()).collect())
 	}
 
-	pub(crate) fn get_content_for_type(&mut self, ct: &ContentType) -> Result<Vec<u8>, Error> {
+	pub fn get_content_for_type(&mut self, ct: &[ContentType]) -> Result<GetContentResult, Error> {
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
 		assert!(lock.is_ok(), "could not acquire mutex");
 
@@ -317,10 +318,7 @@ impl OSXClipboardContext {
 		Ok(data.bytes().to_vec())
 	}
 
-	pub(crate) fn set_content_types(
-		&mut self,
-		map: HashMap<ContentType, Vec<u8>>,
-	) -> Result<(), Error> {
+	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
 		assert!(lock.is_ok(), "could not acquire mutex");
 
@@ -346,7 +344,7 @@ impl OSXClipboardContext {
 		}
 	}
 
-	pub(crate) fn normalize_content_type(&self, s: String) -> ContentType {
+	pub fn normalize_content_type(&self, s: String) -> ContentType {
 		match s.as_str() {
 			"public.file-url" => ContentType::Url,
 			"public.html" => ContentType::Html,
@@ -358,7 +356,8 @@ impl OSXClipboardContext {
 		}
 	}
 
-	pub(crate) fn denormalize_content_type(&self, ct: ContentType) -> String {
+	/// On OSX, all supported CTs have a single system type
+	fn denormalize_ct_single(&self, ct: ContentType) -> String {
 		match ct {
 			ContentType::Url => "public.file-url",
 			ContentType::Html => "public.html",
@@ -367,8 +366,11 @@ impl OSXClipboardContext {
 			ContentType::Rtf => "public.rtf",
 			ContentType::Text => "public.utf8-plain-text",
 			ContentType::Custom(s) => return s,
-		}
-		.into()
+		}.into()
+	}
+
+	pub fn denormalize_content_type(&self, ct: ContentType) -> Vec<String> {
+		vec![self.denormalize_ct_single(ct)]
 	}
 
 	/// Gets the first item from the pasteboard.

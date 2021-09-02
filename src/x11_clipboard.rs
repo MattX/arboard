@@ -46,7 +46,7 @@ use x11rb::{
 	COPY_DEPTH_FROM_PARENT, COPY_FROM_PARENT, NONE,
 };
 
-use crate::common::ContentType;
+use crate::common::{ContentType, GetContentResult};
 #[cfg(feature = "image-data")]
 use crate::{common_linux::encode_as_png, ImageData};
 use crate::{common_linux::into_unknown, Error, LinuxClipboardKind};
@@ -584,7 +584,10 @@ impl ClipboardContext {
 			self.server.conn.flush().map_err(into_unknown)?;
 			success = true;
 		} else {
-			trace!("Handling request for (probably) the clipboard contents. Target {}", self.atom_name_dbg(event.target));
+			trace!(
+				"Handling request for (probably) the clipboard contents. Target {}",
+				self.atom_name_dbg(event.target)
+			);
 			let data = self.data_of(selection).read();
 			if let Some(data) = &*data {
 				if let Some(val) = data.get(&event.target) {
@@ -940,12 +943,19 @@ impl X11ClipboardContext {
 
 	pub fn get_content_for_type(
 		&mut self,
-		ct: &ContentType,
+		ct: &[ContentType],
 		selection: LinuxClipboardKind,
-	) -> Result<Vec<u8>, Error> {
-		let format_atom =
-			self.inner.intern_atom(&X11ClipboardContext::denormalize_content_type(ct.clone()))?;
-		self.inner.read(&[format_atom], selection).map(|r| r.bytes)
+	) -> Result<GetContentResult, Error> {
+		let type_atoms: Vec<_> = ct
+			.iter()
+			.flat_map(|ct| X11ClipboardContext::denormalize_content_type(ct.clone()).into_iter())
+			.map(|v| self.inner.intern_atom(&v))
+			.collect::<Result<_, _>>()?;
+		let result = self.inner.read(&type_atoms, selection)?;
+		Ok(GetContentResult {
+			content_type: self.inner.atom_name(result.format)?,
+			data: result.bytes,
+		})
 	}
 
 	pub fn set_content_types(
@@ -956,7 +966,8 @@ impl X11ClipboardContext {
 		let atom_map = map
 			.into_iter()
 			.map(|(key, value)| {
-				let denorm = X11ClipboardContext::denormalize_content_type(key);
+				let denorm =
+					X11ClipboardContext::denormalize_content_type(key).into_iter().next().unwrap();
 				let new_key = self.inner.intern_atom(&denorm)?;
 				Ok((new_key, value))
 			})
@@ -991,20 +1002,28 @@ impl X11ClipboardContext {
 				return ContentType::Png;
 			} else if mime_type == "application/rtf" {
 				return ContentType::Rtf;
+			} else if mime_type.essence_str() == "text/uri-list" {
+				return ContentType::Url;
 			}
 		}
 		ContentType::Custom(s)
 	}
 
-	pub fn denormalize_content_type(ct: ContentType) -> String {
+	pub fn denormalize_content_type(ct: ContentType) -> Vec<String> {
 		match ct {
-			ContentType::Text => "UTF8_STRING".to_string(),
-			ContentType::Html => mime::TEXT_HTML_UTF_8.to_string(),
-			ContentType::Pdf => mime::APPLICATION_PDF.to_string(),
-			ContentType::Png => mime::IMAGE_PNG.to_string(),
-			ContentType::Rtf => "application/rtf".to_string(),
-			ContentType::Url => mime::TEXT_PLAIN_UTF_8.to_string(),
-			ContentType::Custom(s) => s,
+			ContentType::Text => vec![
+				"UTF8_STRING".to_string(),
+				mime::TEXT_PLAIN.to_string(),
+				mime::TEXT_PLAIN_UTF_8.to_string(),
+			],
+			ContentType::Html => {
+				vec![mime::TEXT_HTML.to_string(), mime::TEXT_HTML_UTF_8.to_string()]
+			}
+			ContentType::Pdf => vec![mime::APPLICATION_PDF.to_string()],
+			ContentType::Png => vec![mime::IMAGE_PNG.to_string()],
+			ContentType::Rtf => vec!["application/rtf".to_string()],
+			ContentType::Url => vec!["text/uri-list".to_string()],
+			ContentType::Custom(s) => vec![s],
 		}
 	}
 }
