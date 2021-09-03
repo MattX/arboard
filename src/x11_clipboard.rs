@@ -941,7 +941,7 @@ impl X11ClipboardContext {
 		self.inner.get_content_types(selection)
 	}
 
-	pub fn get_content_for_type(
+	pub fn get_content_for_types(
 		&mut self,
 		ct: &[ContentType],
 		selection: LinuxClipboardKind,

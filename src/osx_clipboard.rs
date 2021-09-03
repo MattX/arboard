@@ -299,7 +299,8 @@ impl OSXClipboardContext {
 		Ok(types.enumerator().into_iter().map(|t| t.as_str().into()).collect())
 	}
 
-	pub fn get_content_for_type(&mut self, ct: &[ContentType]) -> Result<GetContentResult, Error> {
+	pub fn get_content_for_types(&mut self, ct: &[ContentType]) -> Result<GetContentResult, Error> {
+		// TODO this is 100% broken
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();
 		assert!(lock.is_ok(), "could not acquire mutex");
 

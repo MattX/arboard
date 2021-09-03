@@ -63,6 +63,22 @@ pub use common_linux::{ClipboardExtLinux, LinuxClipboardKind};
 ///
 /// It is also valid to have multiple `Clipboards` on separate threads at once but note that
 /// executing multiple clipboard operations in parallel might fail with a `ClipboardOccupied` error.
+///
+/// ### Content types
+///
+/// The clipboard can contain several representations of the same data; for instance, if a user
+/// selects text from a browser, the browser may write both an HTML and a plain text version of the
+/// selection to the clipboard.
+///
+/// Each platform has its own convention for the content type descriptor. For convenience, this
+/// library provides some standard aliases, which can be converted into platform-appropriate types:
+/// see the [`ContentType`] struct. Even if a `ContentType` object is expected, it's always
+/// possible to store a system-specific struct in `ContentType::Custom`.
+///
+/// In general, functions take in `ContentType` objects, but return unconverted system-specific
+/// `String`s. This is because conversion from `String` to `ContentType` can be lossy, so it's
+/// better for it to be user-controlled. The `normalize_content_type` function can be used to
+/// convert a `String` into a `ContentType`.
 pub struct Clipboard {
 	pub(crate) platform: PlatformClipboard,
 }
@@ -110,12 +126,13 @@ impl Clipboard {
 		self.platform.get_content_types()
 	}
 
-	/// Get data for a particular content type
-	pub fn get_content_for_type(&mut self, ct: &[ContentType]) -> Result<GetContentResult, Error> {
-		self.platform.get_content_for_type(ct)
+	/// Get data in the desired format. Tries each content type in `ct`, and returns the first one
+	/// for which the clipboard has data.
+	pub fn get_content_for_types(&mut self, ct: &[ContentType]) -> Result<GetContentResult, Error> {
+		self.platform.get_content_for_types(ct)
 	}
 
-	/// Set the mapping of content types to data in the clipboard
+	/// Set the mapping of content types to data in the clipboard.
 	pub fn set_content_types(&mut self, map: HashMap<ContentType, Vec<u8>>) -> Result<(), Error> {
 		self.platform.set_content_types(map)
 	}
@@ -126,7 +143,6 @@ impl Clipboard {
 		self.platform.normalize_content_type(s)
 	}
 
-	// TODO: return a non-empty vector type?
 	/// Denormalize content type. The resulting strings can be used to create
 	/// [`ContentType::Custom`] instances.
 	///
@@ -145,9 +161,17 @@ mod tests {
 	/// All tests are run serially because the windows clipboard cannot be open on
 	/// multiple threads at once.
 	use serial_test::serial;
+	use std::array::IntoIter;
+	use std::sync::Once;
+	use std::collections::HashSet;
+	use std::iter::FromIterator;
+
+	static INIT: Once = Once::new();
 
 	fn setup() {
-		env_logger::builder().is_test(true).try_init().unwrap();
+		INIT.call_once(|| {
+			env_logger::builder().is_test(true).try_init().unwrap();
+		});
 	}
 
 	#[test]
@@ -210,7 +234,6 @@ mod tests {
 	#[serial]
 	fn secondary_clipboard() {
 		setup();
-		use crate::{ClipboardExtLinux, LinuxClipboardKind};
 		let mut ctx = Clipboard::new().unwrap();
 
 		const TEXT1: &str = "I'm a little teapot,";
@@ -236,5 +259,46 @@ mod tests {
 		{
 			assert_eq!(TEXT3, &ctx.get_text_with_clipboard(LinuxClipboardKind::Secondary).unwrap());
 		}
+	}
+
+	#[test]
+	#[serial]
+	fn set_several_types() {
+		setup();
+		let mut ctx = Clipboard::new().unwrap();
+		ctx.set_content_types(
+			IntoIter::new([
+				(ContentType::Text,
+				"hello, world".as_bytes().to_vec()),
+				(ContentType::Html,
+				"<span>hello, world!</span>".as_bytes().to_vec()),
+			]).collect()
+		)
+		.unwrap();
+
+		let result = ctx.get_content_for_types(&[ContentType::Rtf, ContentType::Html, ContentType::Text]).unwrap();
+		assert_eq!(ctx.normalize_content_type(result.content_type), ContentType::Html);
+		assert_eq!(result.data, "<span>hello, world!</span>".as_bytes().to_vec());
+	}
+
+	#[test]
+	#[serial]
+	fn list_content_types() {
+		setup();
+		let mut ctx = Clipboard::new().unwrap();
+		ctx.set_content_types(
+			IntoIter::new([
+				(ContentType::Text,
+				 "hello, world".as_bytes().to_vec()),
+				(ContentType::Html,
+				 "<span>hello, world!</span>".as_bytes().to_vec()),
+			]).collect()
+		)
+			.unwrap();
+
+		let result = ctx.get_content_types().unwrap().into_iter().map(|x| ctx.normalize_content_type(x)).collect::<HashSet<_>>();
+		let reference = HashSet::<_>::from_iter(IntoIter::new([ContentType::Text, ContentType::Html]));
+		// there can be other types that get added implicitly, for instance TARGETS on X11.
+		assert!(reference.is_subset(&result));
 	}
 }

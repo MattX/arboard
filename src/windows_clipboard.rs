@@ -319,7 +319,7 @@ impl WindowsClipboardContext {
 		Err(Error::ClipboardNotSupported)
 	}
 
-	pub fn get_content_for_type(&mut self, _ct: &[ContentType]) -> Result<GetContentResult, Error> {
+	pub fn get_content_for_types(&mut self, _ct: &[ContentType]) -> Result<GetContentResult, Error> {
 		Err(Error::ClipboardNotSupported)
 	}
 

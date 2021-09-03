@@ -231,12 +231,12 @@ impl LinuxClipboard {
 		}
 	}
 
-	pub fn get_content_for_type(&mut self, ct: &[ContentType]) -> Result<GetContentResult, Error> {
+	pub fn get_content_for_types(&mut self, ct: &[ContentType]) -> Result<GetContentResult, Error> {
 		match self {
-			Self::X11(cb) => cb.get_content_for_type(ct, LinuxClipboardKind::Clipboard),
+			Self::X11(cb) => cb.get_content_for_types(ct, LinuxClipboardKind::Clipboard),
 
 			#[cfg(feature = "wayland-data-control")]
-			Self::WlDataControl(cb) => cb.get_content_for_type(ct, LinuxClipboardKind::Clipboard),
+			Self::WlDataControl(cb) => cb.get_content_for_types(ct, LinuxClipboardKind::Clipboard),
 		}
 	}
 
