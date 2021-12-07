@@ -89,6 +89,10 @@ impl Clipboard {
 		Ok(Clipboard { platform: PlatformClipboard::new()? })
 	}
 
+	pub fn from_platform_clipboard(platform_clipboard: PlatformClipboard) -> Self {
+		Clipboard { platform: platform_clipboard }
+	}
+
 	/// Fetches utf-8 text from the clipboard and returns it.
 	pub fn get_text(&mut self) -> Result<String, Error> {
 		self.platform.get_text()

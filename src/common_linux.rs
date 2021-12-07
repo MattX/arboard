@@ -148,7 +148,14 @@ pub enum LinuxClipboard {
 	WlDataControl(WaylandDataControlClipboardContext),
 }
 
+pub enum LinuxClipboardType {
+	X11,
+	#[cfg(feature = "wayland-data-control")]
+	Wayland,
+}
+
 impl LinuxClipboard {
+	/// Create a `LinuxClipboard` object, automatically guessing whether to use Wayland or X11
 	pub fn new() -> Result<Self, Error> {
 		#[cfg(feature = "wayland-data-control")]
 		{
@@ -167,6 +174,17 @@ impl LinuxClipboard {
 			}
 		}
 		Ok(Self::X11(X11ClipboardContext::new()?))
+	}
+
+	/// Create a `LinuxClipboard` object that explicitly interacts with X11 or Wayland
+	pub fn new_typed(type_: LinuxClipboardType) -> Result<Self, Error> {
+		match type_ {
+			LinuxClipboardType::X11 => Ok(Self::X11(X11ClipboardContext::new()?)),
+			#[cfg(feature = "wayland-data-control")]
+			LinuxClipboardType::Wayland => {
+				Ok(Self::WlDataControl(WaylandDataControlClipboardContext::new()?))
+			}
+		}
 	}
 
 	/// Fetches utf-8 text from the clipboard and returns it.
