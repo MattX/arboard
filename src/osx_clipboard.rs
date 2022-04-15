@@ -1,7 +1,7 @@
 /*
 SPDX-License-Identifier: Apache-2.0 OR MIT
 
-Copyright 2020 The arboard contributors
+Copyright 2022 The Arboard contributors
 
 The project to which this file belongs is licensed under either of
 the Apache 2.0 or the MIT license at the licensee's choice. The terms
@@ -202,7 +202,7 @@ impl OSXClipboardContext {
 	// 	}
 	// }
 	#[cfg(feature = "image-data")]
-	pub(crate) fn get_image(&mut self) -> Result<ImageData, Error> {
+	pub(crate) fn get_image(&mut self) -> Result<ImageData<'static>, Error> {
 		use std::io::Cursor;
 
 		let lock = CLIPBOARD_CONTEXT_MUTEX.lock();

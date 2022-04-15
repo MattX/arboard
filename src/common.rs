@@ -1,7 +1,7 @@
 /*
 SPDX-License-Identifier: Apache-2.0 OR MIT
 
-Copyright 2020 The arboard contributors
+Copyright 2022 The Arboard contributors
 
 The project to which this file belongs is licensed under either of
 the Apache 2.0 or the MIT license at the licensee's choice. The terms
@@ -134,6 +134,28 @@ impl<'a> ImageData<'a> {
 			width: self.width,
 			height: self.height,
 			bytes: self.bytes.clone().into_owned().into(),
+		}
+	}
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+pub(crate) struct ScopeGuard<F: FnOnce()> {
+	callback: Option<F>,
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+impl<F: FnOnce()> ScopeGuard<F> {
+	#[cfg_attr(all(windows, not(feature = "image-data")), allow(dead_code))]
+	pub(crate) fn new(callback: F) -> Self {
+		ScopeGuard { callback: Some(callback) }
+	}
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+impl<F: FnOnce()> Drop for ScopeGuard<F> {
+	fn drop(&mut self) {
+		if let Some(callback) = self.callback.take() {
+			(callback)();
 		}
 	}
 }

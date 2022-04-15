@@ -1,7 +1,7 @@
 /*
 SPDX-License-Identifier: Apache-2.0 OR MIT
 
-Copyright 2020 The arboard contributors
+Copyright 2022 The Arboard contributors
 
 The project to which this file belongs is licensed under either of
 the Apache 2.0 or the MIT license at the licensee's choice. The terms
@@ -27,9 +27,10 @@ use std::{
 	time::{Duration, Instant},
 	usize,
 };
+use std::iter::FromIterator;
+use std::str::FromStr;
 
 use log::{error, trace, warn};
-use once_cell::sync::Lazy;
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock};
 use x11rb::{
 	connection::Connection,
@@ -46,16 +47,14 @@ use x11rb::{
 	COPY_DEPTH_FROM_PARENT, COPY_FROM_PARENT, NONE,
 };
 
+use crate::{common::ScopeGuard, common_linux::into_unknown, Error, LinuxClipboardKind};
 use crate::common::{ContentType, GetContentResult};
 #[cfg(feature = "image-data")]
 use crate::{common_linux::encode_as_png, ImageData};
-use crate::{common_linux::into_unknown, Error, LinuxClipboardKind};
-use std::iter::FromIterator;
-use std::str::FromStr;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-static CLIPBOARD: Lazy<Mutex<Option<GlobalClipboard>>> = Lazy::new(|| Mutex::new(None));
+static CLIPBOARD: Mutex<Option<GlobalClipboard>> = parking_lot::const_mutex(None);
 
 x11rb::atom_manager! {
 	pub Atoms: AtomCookies {
@@ -730,22 +729,6 @@ impl ClipboardContext {
 	}
 }
 
-struct ScopeGuard<F: FnOnce()> {
-	callback: Option<F>,
-}
-impl<F: FnOnce()> ScopeGuard<F> {
-	fn new(callback: F) -> Self {
-		ScopeGuard { callback: Some(callback) }
-	}
-}
-impl<F: FnOnce()> Drop for ScopeGuard<F> {
-	fn drop(&mut self) {
-		if let Some(callback) = self.callback.take() {
-			(callback)();
-		}
-	}
-}
-
 fn serve_requests(clipboard: Arc<ClipboardContext>) -> Result<(), Box<dyn std::error::Error>> {
 	fn handover_finished(
 		clip: &Arc<ClipboardContext>,
@@ -910,7 +893,7 @@ impl X11ClipboardContext {
 	}
 
 	#[cfg(feature = "image-data")]
-	pub fn get_image(&self) -> Result<ImageData> {
+	pub fn get_image(&self) -> Result<ImageData<'static>> {
 		let formats = [self.inner.atoms.PNG_MIME];
 		let bytes = self.inner.read(&formats, LinuxClipboardKind::Clipboard)?.bytes;
 
