@@ -10,8 +10,6 @@ and conditions of the chosen license apply to this file.
 
 #![crate_name = "arboard"]
 #![crate_type = "lib"]
-#![crate_type = "dylib"]
-#![crate_type = "rlib"]
 
 mod common;
 #[cfg(feature = "image-data")]
@@ -76,9 +74,11 @@ pub use common_linux::{ClipboardExtLinux, LinuxClipboardKind};
 /// possible to store a system-specific struct in `ContentType::Custom`.
 ///
 /// In general, functions take in `ContentType` objects, but return unconverted system-specific
-/// `String`s. This is because conversion from `String` to `ContentType` can be lossy, so it's
-/// better for it to be user-controlled. The `normalize_content_type` function can be used to
-/// convert a `String` into a `ContentType`.
+/// `String`s. This is because conversion from `String` to `ContentType` can be lossy: for instance,
+/// on X11, both `TEXT` and `text/plain` conventionally refer to the same format, and would both
+/// correspond to `ContentType::Text`. Since the distinction between `TEXT` and `text/plain` could
+/// be relevant to the calling application, the conversion is not performed automatically. The
+/// `normalize_content_type` function can be used to convert a `String` into a `ContentType`.
 pub struct Clipboard {
 	pub(crate) platform: PlatformClipboard,
 }
@@ -166,9 +166,9 @@ mod tests {
 	/// multiple threads at once.
 	use serial_test::serial;
 	use std::array::IntoIter;
-	use std::sync::Once;
 	use std::collections::HashSet;
 	use std::iter::FromIterator;
+	use std::sync::Once;
 
 	static INIT: Once = Once::new();
 
@@ -218,12 +218,12 @@ mod tests {
 		setup();
 		let mut ctx = Clipboard::new().unwrap();
 		#[rustfmt::skip]
-					let bytes = [
-					255, 100, 100, 255,
-					100, 255, 100, 100,
-					100, 100, 255, 100,
-					0, 0, 0, 255,
-				];
+		let bytes = [
+			255, 100, 100, 255,
+			100, 255, 100, 100,
+			100, 100, 255, 100,
+			0, 0, 0, 255,
+		];
 		let img_data = ImageData { width: 2, height: 2, bytes: bytes.as_ref().into() };
 		ctx.set_image(img_data.clone()).unwrap();
 		let got = ctx.get_image().unwrap();
@@ -272,15 +272,16 @@ mod tests {
 		let mut ctx = Clipboard::new().unwrap();
 		ctx.set_content_types(
 			IntoIter::new([
-				(ContentType::Text,
-				"hello, world".as_bytes().to_vec()),
-				(ContentType::Html,
-				"<span>hello, world!</span>".as_bytes().to_vec()),
-			]).collect()
+				(ContentType::Text, "hello, world".as_bytes().to_vec()),
+				(ContentType::Html, "<span>hello, world!</span>".as_bytes().to_vec()),
+			])
+			.collect(),
 		)
 		.unwrap();
 
-		let result = ctx.get_content_for_types(&[ContentType::Rtf, ContentType::Html, ContentType::Text]).unwrap();
+		let result = ctx
+			.get_content_for_types(&[ContentType::Rtf, ContentType::Html, ContentType::Text])
+			.unwrap();
 		assert_eq!(ctx.normalize_content_type(result.content_type), ContentType::Html);
 		assert_eq!(result.data, "<span>hello, world!</span>".as_bytes().to_vec());
 	}
@@ -292,16 +293,21 @@ mod tests {
 		let mut ctx = Clipboard::new().unwrap();
 		ctx.set_content_types(
 			IntoIter::new([
-				(ContentType::Text,
-				 "hello, world".as_bytes().to_vec()),
-				(ContentType::Html,
-				 "<span>hello, world!</span>".as_bytes().to_vec()),
-			]).collect()
+				(ContentType::Text, "hello, world".as_bytes().to_vec()),
+				(ContentType::Html, "<span>hello, world!</span>".as_bytes().to_vec()),
+			])
+			.collect(),
 		)
-			.unwrap();
+		.unwrap();
 
-		let result = ctx.get_content_types().unwrap().into_iter().map(|x| ctx.normalize_content_type(x)).collect::<HashSet<_>>();
-		let reference = HashSet::<_>::from_iter(IntoIter::new([ContentType::Text, ContentType::Html]));
+		let result = ctx
+			.get_content_types()
+			.unwrap()
+			.into_iter()
+			.map(|x| ctx.normalize_content_type(x))
+			.collect::<HashSet<_>>();
+		let reference =
+			HashSet::<_>::from_iter(IntoIter::new([ContentType::Text, ContentType::Html]));
 		// there can be other types that get added implicitly, for instance TARGETS on X11.
 		assert!(reference.is_subset(&result));
 	}

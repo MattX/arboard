@@ -145,12 +145,19 @@ impl<'a> ImageData<'a> {
 /// alternative to represent system-specific types.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ContentType {
+	/// Plain text. Usually in UTF-8 encoding, but sometimes this is not clearly specified.
 	Text,
+	/// HTML. Usually in UTF-8 encoding, but sometimes this is not clearly specified.
 	Html,
+	/// PDF document
 	Pdf,
+	/// PNG image
 	Png,
+	/// Rich text format
 	Rtf,
+	/// URL; this is used somewhat inconsistently with `ContentType::Text`
 	Url,
+	/// Custom content type; will be passed as-is to the operating system.
 	Custom(String),
 }
 
