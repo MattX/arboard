@@ -15,6 +15,8 @@ and conditions of the chosen license apply to this file.
 // TODO: According to the tronche.com link above, we must support MULTIPLE and TIMESTAMP in
 //       addition to TARGETS.
 
+use std::iter::FromIterator;
+use std::str::FromStr;
 use std::{
 	cell::RefCell,
 	collections::{hash_map::Entry, HashMap},
@@ -27,8 +29,6 @@ use std::{
 	time::{Duration, Instant},
 	usize,
 };
-use std::iter::FromIterator;
-use std::str::FromStr;
 
 use log::{error, trace, warn};
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock};
@@ -47,8 +47,8 @@ use x11rb::{
 	COPY_DEPTH_FROM_PARENT, COPY_FROM_PARENT, NONE,
 };
 
-use crate::{common::ScopeGuard, common_linux::into_unknown, Error, LinuxClipboardKind};
 use crate::common::{ContentType, GetContentResult};
+use crate::{common::ScopeGuard, common_linux::into_unknown, Error, LinuxClipboardKind};
 #[cfg(feature = "image-data")]
 use crate::{common_linux::encode_as_png, ImageData};
 

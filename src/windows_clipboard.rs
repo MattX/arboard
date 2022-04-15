@@ -30,7 +30,7 @@ use winapi::{
 	},
 };
 
-use super::common::{ContentType, GetContentResult, Error};
+use super::common::{ContentType, Error, GetContentResult};
 
 #[cfg(feature = "image-data")]
 use super::common::{ImageData, ScopeGuard};
