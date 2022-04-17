@@ -205,4 +205,16 @@ fn all_tests() {
 			assert_eq!(TEXT3, &ctx.get_text_with_clipboard(LinuxClipboardKind::Secondary).unwrap());
 		}
 	}
+	#[cfg(target_os = "macos")]
+	{
+		// Test accessing clipboard from several threads.
+		let thread_handles = (0..100).map(|_| std::thread::spawn(move || {
+			let mut ctx = Clipboard::new().unwrap();
+			for _ in 0..100 {
+				ctx.set_text("test".into()).unwrap();
+				assert_eq!(ctx.get_text().unwrap(), "test");
+			}
+		}));
+		thread_handles.for_each(|handle| handle.join().unwrap());
+	}
 }

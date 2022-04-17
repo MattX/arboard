@@ -26,10 +26,19 @@ use objc_foundation::{INSArray, INSObject, INSString};
 use objc_foundation::{NSArray, NSDictionary, NSObject, NSString};
 use objc_id::{Id, Owned};
 use std::mem::transmute;
+use std::sync::RwLock;
 
 // required to bring NSPasteboard into the path of the class-resolver
 #[link(name = "AppKit", kind = "framework")]
 extern "C" {}
+
+// Creating or accessing the OSX pasteboard is not thread-safe, and needs to be protected.
+// see https://github.com/alacritty/copypasta/issues/11, and Apple documentation:
+// https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Multithreading/ThreadSafetySummary/ThreadSafetySummary.html#//apple_ref/doc/uid/20000736-126010
+struct ClipboardLockToken;
+lazy_static::lazy_static! {
+	static ref CLIPBOARD_RW_LOCK: RwLock<ClipboardLockToken> = RwLock::new(ClipboardLockToken {});
+}
 
 /// Returns an NSImage object on success.
 #[cfg(feature = "image-data")]
@@ -89,6 +98,10 @@ pub struct OSXClipboardContext {
 
 impl OSXClipboardContext {
 	pub(crate) fn new() -> Result<OSXClipboardContext, Error> {
+		let lock = CLIPBOARD_RW_LOCK.write();
+		if !lock.is_ok() {
+			panic!("could not acquire lock");
+		}
 		let cls = Class::get("NSPasteboard")
 			.ok_or(Error::Unknown { description: "Class::get(\"NSPasteboard\")".into() })?;
 		let pasteboard: *mut Object = unsafe { msg_send![cls, generalPasteboard] };
@@ -101,6 +114,10 @@ impl OSXClipboardContext {
 		Ok(OSXClipboardContext { pasteboard })
 	}
 	pub(crate) fn get_text(&mut self) -> Result<String, Error> {
+		let lock = CLIPBOARD_RW_LOCK.read();
+		if !lock.is_ok() {
+			panic!("could not acquire lock");
+		}
 		let string_class: Id<NSObject> = {
 			let cls: Id<Class> = unsafe { Id::from_ptr(class("NSString")) };
 			unsafe { transmute(cls) }
@@ -124,6 +141,10 @@ impl OSXClipboardContext {
 		}
 	}
 	pub(crate) fn set_text(&mut self, data: String) -> Result<(), Error> {
+		let lock = CLIPBOARD_RW_LOCK.write();
+		if !lock.is_ok() {
+			panic!("could not acquire lock");
+		}
 		let string_array = NSArray::from_vec(vec![NSString::from_str(&data)]);
 		let _: usize = unsafe { msg_send![self.pasteboard, clearContents] };
 		let success: bool = unsafe { msg_send![self.pasteboard, writeObjects: string_array] };
@@ -186,6 +207,11 @@ impl OSXClipboardContext {
 	pub(crate) fn get_image(&mut self) -> Result<ImageData<'static>, Error> {
 		use std::io::Cursor;
 
+		let lock = CLIPBOARD_RW_LOCK.read();
+		if !lock.is_ok() {
+			panic!("could not acquire lock");
+		}
+
 		let image_class: Id<NSObject> = {
 			let cls: Id<Class> = unsafe { Id::from_ptr(class("NSImage")) };
 			unsafe { transmute(cls) }
@@ -243,6 +269,10 @@ impl OSXClipboardContext {
 
 	#[cfg(feature = "image-data")]
 	pub(crate) fn set_image(&mut self, data: ImageData) -> Result<(), Error> {
+		let lock = CLIPBOARD_RW_LOCK.write();
+		if !lock.is_ok() {
+			panic!("could not acquire lock");
+		}
 		let pixels = data.bytes.into();
 		let image = image_from_pixels(pixels, data.width, data.height)
 			.map_err(|_| Error::ConversionFailure)?;
