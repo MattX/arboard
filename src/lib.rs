@@ -133,6 +133,13 @@ impl Clipboard {
 	}
 }
 
+/// A struct holding a (platform specific) content type, as well as the contents
+/// of the clipboard for that content type.
+pub struct ContentTypeResult {
+	pub content_type: Vec<u8>,
+	pub content: Vec<u8>,
+}
+
 /// A builder for an operation that gets a value from the clipboard.
 #[must_use]
 pub struct Get<'clipboard> {
@@ -154,6 +161,14 @@ impl Get<'_> {
 	#[cfg(feature = "image-data")]
 	pub fn image(self) -> Result<ImageData<'static>, Error> {
 		self.platform.image()
+	}
+
+	/// Completes the "get" operation by fetching the specified content type from the clipboard
+	pub fn content_types<T: AsRef<[u8]>>(
+		self,
+		content_types: &[T],
+	) -> Result<ContentTypeResult, Error> {
+		self.platform.content_types(content_types)
 	}
 }
 

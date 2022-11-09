@@ -32,9 +32,9 @@ use x11rb::{
 	connection::Connection,
 	protocol::{
 		xproto::{
-			Atom, AtomEnum, ConnectionExt as _, CreateWindowAux, EventMask, PropMode, Property,
-			PropertyNotifyEvent, SelectionNotifyEvent, SelectionRequestEvent, Time, WindowClass,
-			SELECTION_NOTIFY_EVENT,
+			get_atom_name, intern_atom, Atom, AtomEnum, ConnectionExt as _, CreateWindowAux,
+			EventMask, PropMode, Property, PropertyNotifyEvent, SelectionNotifyEvent,
+			SelectionRequestEvent, Time, WindowClass, SELECTION_NOTIFY_EVENT,
 		},
 		Event,
 	},
@@ -48,7 +48,7 @@ use super::encode_as_png;
 use super::{into_unknown, LinuxClipboardKind};
 #[cfg(feature = "image-data")]
 use crate::ImageData;
-use crate::{common::ScopeGuard, Error};
+use crate::{common::ScopeGuard, ContentTypeResult, Error};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -925,6 +925,29 @@ impl Clipboard {
 		let encoded = encode_as_png(&image)?;
 		let data = vec![ClipboardData { bytes: encoded, format: self.inner.atoms.PNG_MIME }];
 		self.inner.write(data, selection, wait)
+	}
+
+	pub fn content_types<T: AsRef<[u8]>>(
+		&self,
+		selection: LinuxClipboardKind,
+		content_types: &[T],
+	) -> Result<ContentTypeResult, Error> {
+		let formats: Result<Vec<_>, _> = content_types
+			.iter()
+			.map(|ct| {
+				let reply = intern_atom(&self.inner.server.conn, false, ct.as_ref())
+					.map_err(into_unknown)?;
+				Ok(reply.reply().map_err(into_unknown)?.atom)
+			})
+			.collect();
+		let formats = formats?;
+		let result = self.inner.read(&formats, selection)?;
+		let atom_name = get_atom_name(&self.inner.server.conn, result.format)
+			.map_err(into_unknown)?
+			.reply()
+			.map_err(into_unknown)?
+			.name;
+		Ok(ContentTypeResult { content_type: atom_name, content: result.bytes })
 	}
 }
 

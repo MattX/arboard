@@ -5,7 +5,7 @@ use log::{trace, warn};
 
 #[cfg(feature = "image-data")]
 use crate::ImageData;
-use crate::{common::private, Error};
+use crate::{common::private, ContentTypeResult, Error};
 
 mod x11;
 
@@ -120,6 +120,17 @@ impl<'clipboard> Get<'clipboard> {
 			Clipboard::X11(clipboard) => clipboard.get_image(self.selection),
 			#[cfg(feature = "wayland-data-control")]
 			Clipboard::WlDataControl(clipboard) => clipboard.get_image(self.selection),
+		}
+	}
+
+	pub(crate) fn content_types<T: AsRef<[u8]>>(
+		self,
+		content_types: &[T],
+	) -> Result<ContentTypeResult, Error> {
+		match self.clipboard {
+			Clipboard::X11(clipboard) => clipboard.content_types(self.selection, content_types),
+			#[cfg(feature = "wayland-data-control")]
+			Clipboard::WlDataControl(clipboard) => clipboard.content_types(self.selection, content_types),
 		}
 	}
 }
