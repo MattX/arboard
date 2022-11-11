@@ -128,7 +128,7 @@ impl<'clipboard> Get<'clipboard> {
 		content_types: &[T],
 	) -> Result<ContentTypeResult, Error> {
 		match self.clipboard {
-			Clipboard::X11(clipboard) => clipboard.content_types(self.selection, content_types),
+			Clipboard::X11(clipboard) => clipboard.get_content_types(self.selection, content_types),
 			#[cfg(feature = "wayland-data-control")]
 			Clipboard::WlDataControl(clipboard) => clipboard.content_types(self.selection, content_types),
 		}
@@ -184,6 +184,21 @@ impl<'clipboard> Set<'clipboard> {
 			Clipboard::X11(clipboard) => clipboard.set_image(image, self.selection, self.wait),
 			#[cfg(feature = "wayland-data-control")]
 			Clipboard::WlDataControl(clipboard) => clipboard.set_image(image, self.selection, self.wait),
+		}
+	}
+
+	pub(crate) fn content_types<T: AsRef<[u8]>>(
+		self,
+		contents: Vec<(T, Vec<u8>)>,
+	) -> Result<(), Error> {
+		match self.clipboard {
+			Clipboard::X11(clipboard) => {
+				clipboard.set_content_types(contents, self.selection, self.wait)
+			}
+			#[cfg(feature = "wayland-data-control")]
+			Clipboard::WlDataControl(clipboard) => {
+				clipboard.set_content_types(contents, self.selection, self.wait)
+			}
 		}
 	}
 }

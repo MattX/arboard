@@ -135,6 +135,7 @@ impl Clipboard {
 
 /// A struct holding a (platform specific) content type, as well as the contents
 /// of the clipboard for that content type.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContentTypeResult {
 	pub content_type: Vec<u8>,
 	pub content: Vec<u8>,
@@ -210,6 +211,13 @@ impl Set<'_> {
 	#[cfg(feature = "image-data")]
 	pub fn image(self, image: ImageData) -> Result<(), Error> {
 		self.platform.image(image)
+	}
+
+	pub(crate) fn content_types<T: AsRef<[u8]>>(
+		self,
+		contents: Vec<(T, Vec<u8>)>,
+	) -> Result<(), Error> {
+		self.platform.content_types(contents)
 	}
 }
 
@@ -299,6 +307,30 @@ mod tests {
 
 			ctx.set_html(html, Some(alt_text)).unwrap();
 			assert_eq!(ctx.get_text().unwrap(), alt_text);
+		}
+		{
+			// Set several content types, get the first one
+			let mut ctx = Clipboard::new().unwrap();
+
+			let html = b"<b>hello</b> <i>world</i>!".as_slice();
+			let text = b"hello world!".as_slice();
+
+			let html_mime = b"text/html".as_slice();
+			let text_mime = b"text/plain".as_slice();
+
+			let set_result = ctx
+				.set()
+				.wait()
+				.content_types(vec![(html_mime, html.to_vec()), (text_mime, text.to_vec())]);
+			assert!(set_result.is_ok());
+
+			let get_result = ctx.get().content_types(&[html_mime]).unwrap();
+			assert_eq!(get_result.content, html);
+			assert_eq!(get_result.content_type, html_mime);
+
+			let get_result = ctx.get().content_types(&[text_mime, html_mime]).unwrap();
+			assert_eq!(get_result.content, text);
+			assert_eq!(get_result.content_type, text_mime);
 		}
 		#[cfg(feature = "image-data")]
 		{

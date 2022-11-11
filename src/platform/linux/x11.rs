@@ -518,8 +518,13 @@ impl Inner {
 			Ok(ReadSelNotifyResult::IncrStarted)
 		} else {
 			// this should never happen, we have sent a request only for supported types
+			let atom_name = get_atom_name(&self.server.conn, reply.type_)
+				.map_err(|e| e.to_string())
+				.and_then(|cookie| cookie.reply().map_err(|e| e.to_string()))
+				.and_then(|reply| String::from_utf8(reply.name).map_err(|e| e.to_string()))
+				.unwrap_or_else(|e| format!("<error getting atom name for {}: {}>", reply.type_, e));
 			Err(Error::Unknown {
-				description: String::from("incorrect type received from clipboard"),
+				description: format!("incorrect type {} received from clipboard", atom_name),
 			})
 		}
 	}
@@ -927,7 +932,7 @@ impl Clipboard {
 		self.inner.write(data, selection, wait)
 	}
 
-	pub fn content_types<T: AsRef<[u8]>>(
+	pub(crate) fn get_content_types<T: AsRef<[u8]>>(
 		&self,
 		selection: LinuxClipboardKind,
 		content_types: &[T],
@@ -935,9 +940,9 @@ impl Clipboard {
 		let formats: Result<Vec<_>, _> = content_types
 			.iter()
 			.map(|ct| {
-				let reply = intern_atom(&self.inner.server.conn, false, ct.as_ref())
+				let intern_atom_reply = intern_atom(&self.inner.server.conn, false, ct.as_ref())
 					.map_err(into_unknown)?;
-				Ok(reply.reply().map_err(into_unknown)?.atom)
+				Ok(intern_atom_reply.reply().map_err(into_unknown)?.atom)
 			})
 			.collect();
 		let formats = formats?;
@@ -948,6 +953,24 @@ impl Clipboard {
 			.map_err(into_unknown)?
 			.name;
 		Ok(ContentTypeResult { content_type: atom_name, content: result.bytes })
+	}
+
+	pub(crate) fn set_content_types<T: AsRef<[u8]>>(
+		&self,
+		contents: Vec<(T, Vec<u8>)>,
+		selection: LinuxClipboardKind,
+		wait: bool,
+	) -> Result<()> {
+		let clipboard_datas: Result<Vec<_>, _> = contents
+			.into_iter()
+			.map(|(ct, content)| {
+				let intern_atom_reply = intern_atom(&self.inner.server.conn, false, ct.as_ref())
+					.map_err(into_unknown)?;
+				let atom = intern_atom_reply.reply().map_err(into_unknown)?.atom;
+				Ok(ClipboardData { bytes: content, format: atom })
+			})
+			.collect();
+		self.inner.write(clipboard_datas?, selection, wait)
 	}
 }
 
